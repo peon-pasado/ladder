@@ -3,21 +3,7 @@ services:
     name: ladder-app
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: >
-      python -c "
-      import os;
-      import psycopg2;
-      print('Conectando a:', os.environ.get('DATABASE_URL'));
-      conn = psycopg2.connect(os.environ.get('DATABASE_URL'));
-      cursor = conn.cursor();
-      cursor.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR(50) UNIQUE NOT NULL, email VARCHAR(100) UNIQUE NOT NULL, password_hash VARCHAR(200) NOT NULL, rating INTEGER DEFAULT 1500)');
-      cursor.execute('CREATE TABLE IF NOT EXISTS baekjoon_accounts (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), baekjoon_username VARCHAR(50) NOT NULL, added_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(user_id, baekjoon_username))');
-      cursor.execute('CREATE TABLE IF NOT EXISTS ladder_problems (id SERIAL PRIMARY KEY, baekjoon_username VARCHAR(50) NOT NULL, position INTEGER NOT NULL, problem_id VARCHAR(20) NOT NULL, problem_title VARCHAR(200) NOT NULL, state VARCHAR(20) DEFAULT ''hidden'', UNIQUE(baekjoon_username, position))');
-      cursor.execute('CREATE TABLE IF NOT EXISTS solved_problems (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), problem_id VARCHAR(20) NOT NULL, problem_title VARCHAR(200) NOT NULL, position INTEGER NOT NULL, solved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(user_id, problem_id))');
-      cursor.execute('CREATE TABLE IF NOT EXISTS email_whitelist (id SERIAL PRIMARY KEY, email VARCHAR(100) UNIQUE NOT NULL, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, notes TEXT)');
-      conn.commit();
-      print('Tablas creadas correctamente');
-      " && python init_db.py && gunicorn wsgi:app
+    startCommand: python setup_postgres.py && gunicorn wsgi:app
     envVars:
       - key: SECRET_KEY
         generateValue: true

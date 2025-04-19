@@ -26,9 +26,21 @@ class Database:
             try:
                 if dict_cursor:
                     print(f"Conectando a PostgreSQL con URL: {DATABASE_URL}")
-                    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+                    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+                    # Establecer explícitamente el esquema público
+                    cursor = conn.cursor()
+                    cursor.execute("SET search_path TO public")
+                    conn.commit()
+                    cursor.close()
+                    return conn
                 else:
-                    return psycopg2.connect(DATABASE_URL)
+                    conn = psycopg2.connect(DATABASE_URL)
+                    # Establecer explícitamente el esquema público
+                    cursor = conn.cursor()
+                    cursor.execute("SET search_path TO public")
+                    conn.commit()
+                    cursor.close()
+                    return conn
             except Exception as e:
                 print(f"Error de conexión a PostgreSQL: {e}")
                 print(f"URL: {DATABASE_URL}")
@@ -56,6 +68,21 @@ class Database:
         Returns:
             El resultado de la consulta o None si es un commit
         """
+        # Si es PostgreSQL, modificar las consultas para usar el esquema 'public'
+        if DB_TYPE == 'postgresql':
+            # Reemplazar referencias a tablas para incluir el esquema público
+            tables = ['users', 'baekjoon_accounts', 'ladder_problems', 'solved_problems', 'email_whitelist']
+            for table in tables:
+                query = query.replace(f' {table} ', f' public.{table} ')
+                if query.startswith(f'SELECT * FROM {table}'):
+                    query = query.replace(f'SELECT * FROM {table}', f'SELECT * FROM public.{table}')
+                if query.startswith(f'INSERT INTO {table}'):
+                    query = query.replace(f'INSERT INTO {table}', f'INSERT INTO public.{table}')
+                if query.startswith(f'UPDATE {table}'):
+                    query = query.replace(f'UPDATE {table}', f'UPDATE public.{table}')
+                if query.startswith(f'DELETE FROM {table}'):
+                    query = query.replace(f'DELETE FROM {table}', f'DELETE FROM public.{table}')
+        
         conn = Database.get_connection(dict_cursor)
         cursor = conn.cursor()
         
@@ -103,7 +130,7 @@ class Database:
             Boolean: True si la tabla existe, False en caso contrario
         """
         if DB_TYPE == 'postgresql':
-            query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)"
+            query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = %s)"
             result = Database.execute_query(query, (table_name,), fetchone=True)
             return result['exists'] if result else False
         else:
