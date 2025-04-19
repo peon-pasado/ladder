@@ -1,5 +1,6 @@
 import sqlite3
 import requests
+import re
 from datetime import datetime
 
 class BaekjoonAccount:
@@ -57,15 +58,41 @@ class BaekjoonAccount:
     
     @staticmethod
     def verify_account(username):
-        """Verificar si la cuenta existe utilizando la API de solved.ac"""
+        """
+        Verificar si la cuenta existe directamente en la página de Baekjoon
+        Este método es más preciso que usar la API de solved.ac, especialmente
+        para cuentas nuevas.
+        """
         try:
-            api_url = f"https://solved.ac/api/v3/user/show?handle={username}"
-            response = requests.get(api_url)
+            direct_url = f"https://www.acmicpc.net/user/{username}"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(direct_url, headers=headers)
             
             if response.status_code == 200:
+                # Si la página contiene mensajes de error específicos, el usuario no existe
+                error_messages = [
+                    "등록된 사용자가 없습니다",  # No registered user
+                    "존재하지 않는 사용자입니다"  # User does not exist
+                ]
+                
+                for error in error_messages:
+                    if error in response.text:
+                        return False
+                
+                # Verificar si se menciona el nombre de usuario en la página
+                if username.lower() in response.text.lower():
+                    return True
+                    
+                # Si no hay mensajes de error y llegamos hasta aquí, asumimos que el usuario existe
                 return True
+            
             return False
         except Exception:
+            # En caso de cualquier error, asumimos que la cuenta no existe
             return False
     
     @staticmethod
