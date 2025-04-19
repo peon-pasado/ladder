@@ -5,6 +5,8 @@ import sys
 IN_RENDER = os.environ.get('RENDER') == 'true'
 
 # Configuración de base de datos
+DATABASE_PATH = 'app.db'  # Valor predeterminado, siempre definido
+
 if IN_RENDER:
     # En Render, necesitamos DATABASE_URL
     if not os.environ.get('DATABASE_URL'):
@@ -18,7 +20,6 @@ if IN_RENDER:
 else:
     # En desarrollo local, usar SQLite
     DB_TYPE = 'sqlite'
-    DATABASE_PATH = 'app.db'
     DATABASE_URL = f'sqlite:///{DATABASE_PATH}'
     print(f"Usando SQLite en desarrollo: {DATABASE_PATH}")
 
