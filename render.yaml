@@ -3,12 +3,14 @@ services:
     name: ladder-app
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python init_db.py && python add_whitelist_table.py && gunicorn wsgi:app
+    startCommand: mkdir -p /data && chmod -R 777 /data && ls -la /data && python init_db.py && python add_whitelist_table.py && gunicorn wsgi:app
     envVars:
       - key: SECRET_KEY
         generateValue: true
       - key: FLASK_ENV
         value: production
+      - key: PYTHONUNBUFFERED
+        value: "true"
     disk:
       name: database
       mountPath: /data
