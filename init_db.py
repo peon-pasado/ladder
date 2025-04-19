@@ -2,15 +2,33 @@ import os
 import sys
 import psycopg2
 import sqlite3
-from app.config import DB_TYPE, IN_RENDER
-from app.db import Database
+from app.config import DB_TYPE, DATABASE_URL, DATABASE_PATH
 
 def init_db():
-    print(f"Inicializando base de datos {DB_TYPE} en entorno {'Render' if IN_RENDER else 'Desarrollo'}...")
+    print(f"=== INICIO DE INIT_DB ===")
+    print(f"Tipo de base de datos: {DB_TYPE}")
+    print(f"URL de conexión: {DATABASE_URL}")
     
     try:
+        # Validar si podemos conectarnos
+        if DB_TYPE == 'postgresql':
+            print("Intentando conectar a PostgreSQL...")
+            conn = psycopg2.connect(DATABASE_URL)
+            print("Conexión a PostgreSQL establecida")
+            conn.close()
+        else:
+            print("Intentando conectar a SQLite...")
+            conn = sqlite3.connect(DATABASE_PATH)
+            print("Conexión a SQLite establecida")
+            conn.close()
+        
+        print("Importando Database...")
+        from app.db import Database
+        
         # Verificar si las tablas necesarias existen
+        print("Verificando si existe tabla users...")
         users_exists = Database.table_exists('users')
+        print(f"¿Existe tabla users? {users_exists}")
         
         if not users_exists:
             print("Creando tabla de usuarios...")
@@ -36,10 +54,13 @@ def init_db():
                 )
                 '''
             
-            Database.execute_query(users_query, commit=True)
+            print(f"Ejecutando query: {users_query}")
+            result = Database.execute_query(users_query, commit=True)
+            print(f"Resultado: {result}")
             print("Tabla de usuarios creada correctamente")
             
             # Crear tabla para cuentas de Baekjoon
+            print("Creando tabla de cuentas Baekjoon...")
             if DB_TYPE == 'postgresql':
                 baekjoon_query = '''
                 CREATE TABLE IF NOT EXISTS baekjoon_accounts (
@@ -62,7 +83,9 @@ def init_db():
                 )
                 '''
             
-            Database.execute_query(baekjoon_query, commit=True)
+            print(f"Ejecutando query: {baekjoon_query}")
+            result = Database.execute_query(baekjoon_query, commit=True)
+            print(f"Resultado: {result}")
             print("Tabla de cuentas Baekjoon creada correctamente")
             
             # Crear tabla para problemas del ladder
@@ -158,9 +181,13 @@ def init_db():
             print("Tabla de whitelist de correos creada correctamente")
         
         print(f"Base de datos {DB_TYPE} inicializada correctamente.")
+        print("=== FIN DE INIT_DB ===")
         
     except Exception as e:
-        print(f"Error al inicializar la base de datos: {e}")
+        print(f"ERROR en init_db: {e}")
+        print(f"Tipo de error: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == '__main__':
