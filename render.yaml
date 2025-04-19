@@ -3,7 +3,7 @@ services:
     name: ladder-app
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python init_db.py && python migrate_to_postgres.py && gunicorn wsgi:app
+    startCommand: set -x && python -c "import os; print('DATABASE_URL exists:', os.environ.get('DATABASE_URL') is not None)" && python init_db.py && python migrate_to_postgres.py && gunicorn wsgi:app
     envVars:
       - key: SECRET_KEY
         generateValue: true

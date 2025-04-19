@@ -1,39 +1,29 @@
-import sqlite3
 import psycopg2
-from psycopg2.extras import DictCursor, RealDictCursor
+from psycopg2.extras import RealDictCursor
 import os
-from app.config import DB_TYPE, DATABASE_URL, DATABASE_PATH
+from app.config import DATABASE_URL
 
 class Database:
     """
     Clase para gestionar las conexiones y operaciones de base de datos.
-    Soporta tanto SQLite como PostgreSQL.
+    Simplificada para usar PostgreSQL.
     """
     
     @staticmethod
     def get_connection(dict_cursor=True):
         """
-        Obtiene una conexión a la base de datos según la configuración.
+        Obtiene una conexión a la base de datos PostgreSQL.
         
         Args:
-            dict_cursor: Si es True, devuelve filas como diccionarios (solo para PostgreSQL)
+            dict_cursor: Si es True, devuelve filas como diccionarios
             
         Returns:
             Una conexión a la base de datos
         """
-        # Siempre usar PostgreSQL en Render (producción)
-        if os.environ.get('DATABASE_URL') and os.environ.get('FLASK_ENV') == 'production':
-            # Conexión a PostgreSQL
-            if dict_cursor:
-                return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-            else:
-                return psycopg2.connect(DATABASE_URL)
+        if dict_cursor:
+            return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
         else:
-            # Conexión a SQLite (para desarrollo)
-            conn = sqlite3.connect(DATABASE_PATH)
-            if dict_cursor:
-                conn.row_factory = sqlite3.Row
-            return conn
+            return psycopg2.connect(DATABASE_URL)
     
     @staticmethod
     def execute_query(query, params=None, fetchone=False, commit=False, dict_cursor=True):
@@ -61,12 +51,10 @@ class Database:
             
             if commit:
                 conn.commit()
-                # Para SQLite, obtener lastrowid si está disponible
-                last_id = getattr(cursor, 'lastrowid', None)
                 affected = cursor.rowcount
                 cursor.close()
                 conn.close()
-                return {"lastrowid": last_id, "rowcount": affected}
+                return {"lastrowid": None, "rowcount": affected}
             elif fetchone:
                 result = cursor.fetchone()
                 cursor.close()
@@ -92,12 +80,6 @@ class Database:
         Returns:
             Boolean: True si la tabla existe, False en caso contrario
         """
-        # Siempre usar PostgreSQL en Render (producción)
-        if os.environ.get('DATABASE_URL') and os.environ.get('FLASK_ENV') == 'production':
-            query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)"
-            result = Database.execute_query(query, (table_name,), fetchone=True)
-            return result['exists'] if result else False
-        else:
-            query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
-            result = Database.execute_query(query, (table_name,), fetchone=True)
-            return result is not None 
+        query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)"
+        result = Database.execute_query(query, (table_name,), fetchone=True)
+        return result['exists'] if result else False 
