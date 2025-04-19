@@ -2,16 +2,12 @@ import sqlite3
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
-from app.config import DATABASE_URL, DB_TYPE, IN_RENDER
-
-# Si estamos en desarrollo, necesitamos DATABASE_PATH
-if not IN_RENDER:
-    from app.config import DATABASE_PATH
+from app.config import DATABASE_URL, DB_TYPE, DATABASE_PATH
 
 class Database:
     """
     Clase para gestionar las conexiones y operaciones de base de datos.
-    Soporta tanto SQLite como PostgreSQL según el entorno.
+    Soporta tanto SQLite como PostgreSQL según la configuración.
     """
     
     @staticmethod
@@ -29,6 +25,7 @@ class Database:
             # Conexión a PostgreSQL
             try:
                 if dict_cursor:
+                    print(f"Conectando a PostgreSQL con URL: {DATABASE_URL}")
                     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
                 else:
                     return psycopg2.connect(DATABASE_URL)
@@ -38,6 +35,7 @@ class Database:
                 raise
         else:
             # Conexión a SQLite
+            print(f"Conectando a SQLite en: {DATABASE_PATH}")
             conn = sqlite3.connect(DATABASE_PATH)
             if dict_cursor:
                 conn.row_factory = sqlite3.Row

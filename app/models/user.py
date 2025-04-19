@@ -2,7 +2,7 @@ from flask_login import UserMixin
 import sqlite3
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.config import DATABASE_PATH, DB_TYPE
+from app.config import DATABASE_URL, DB_TYPE
 from app.db import Database
 
 class User(UserMixin):
