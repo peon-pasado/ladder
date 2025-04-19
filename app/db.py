@@ -1,18 +1,23 @@
+import sqlite3
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
-from app.config import DATABASE_URL
+from app.config import DATABASE_URL, DB_TYPE, IN_RENDER
+
+# Si estamos en desarrollo, necesitamos DATABASE_PATH
+if not IN_RENDER:
+    from app.config import DATABASE_PATH
 
 class Database:
     """
     Clase para gestionar las conexiones y operaciones de base de datos.
-    Simplificada para usar PostgreSQL.
+    Soporta tanto SQLite como PostgreSQL según el entorno.
     """
     
     @staticmethod
     def get_connection(dict_cursor=True):
         """
-        Obtiene una conexión a la base de datos PostgreSQL.
+        Obtiene una conexión a la base de datos según la configuración.
         
         Args:
             dict_cursor: Si es True, devuelve filas como diccionarios
@@ -20,10 +25,23 @@ class Database:
         Returns:
             Una conexión a la base de datos
         """
-        if dict_cursor:
-            return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        if DB_TYPE == 'postgresql':
+            # Conexión a PostgreSQL
+            try:
+                if dict_cursor:
+                    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+                else:
+                    return psycopg2.connect(DATABASE_URL)
+            except Exception as e:
+                print(f"Error de conexión a PostgreSQL: {e}")
+                print(f"URL: {DATABASE_URL}")
+                raise
         else:
-            return psycopg2.connect(DATABASE_URL)
+            # Conexión a SQLite
+            conn = sqlite3.connect(DATABASE_PATH)
+            if dict_cursor:
+                conn.row_factory = sqlite3.Row
+            return conn
     
     @staticmethod
     def execute_query(query, params=None, fetchone=False, commit=False, dict_cursor=True):
@@ -51,10 +69,12 @@ class Database:
             
             if commit:
                 conn.commit()
+                # Para SQLite, obtener lastrowid si está disponible
+                last_id = getattr(cursor, 'lastrowid', None)
                 affected = cursor.rowcount
                 cursor.close()
                 conn.close()
-                return {"lastrowid": None, "rowcount": affected}
+                return {"lastrowid": last_id, "rowcount": affected}
             elif fetchone:
                 result = cursor.fetchone()
                 cursor.close()
@@ -66,6 +86,10 @@ class Database:
                 conn.close()
                 return result
         except Exception as e:
+            print(f"Error en la consulta: {e}")
+            print(f"Query: {query}")
+            if params:
+                print(f"Params: {params}")
             conn.close()
             raise e
     
@@ -80,6 +104,11 @@ class Database:
         Returns:
             Boolean: True si la tabla existe, False en caso contrario
         """
-        query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)"
-        result = Database.execute_query(query, (table_name,), fetchone=True)
-        return result['exists'] if result else False 
+        if DB_TYPE == 'postgresql':
+            query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)"
+            result = Database.execute_query(query, (table_name,), fetchone=True)
+            return result['exists'] if result else False
+        else:
+            query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+            result = Database.execute_query(query, (table_name,), fetchone=True)
+            return result is not None 
