@@ -1,0 +1,31 @@
+# Entornos virtuales
+venv/
+env/
+ENV/
+
+# Base de datos SQLite (opcional, según tus necesidades)
+# app.db
+
+# Archivos de caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos del sistema
+.DS_Store
+.env
+.env.local
+
+# Logs
+*.log
+
+# Archivos de distribución
+dist/
+build/
+*.egg-info/
+
+# IDE y editores
+.idea/
+.vscode/
+*.swp
+*.swo 

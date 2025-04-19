@@ -85,6 +85,24 @@ Se han implementado los siguientes endpoints de la API:
 - SQLite
 - Flask
 
+## Despliegue en Render
+
+Para desplegar esta aplicación en Render:
+
+1. Asegúrate de tener una cuenta en [Render](https://render.com/)
+2. Conecta tu repositorio de GitHub a Render
+3. Crea un nuevo Web Service y selecciona el repositorio
+4. Usa las siguientes configuraciones:
+   - **Environment**: Python
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn app:app`
+   - **Plan**: Free
+5. Añade las siguientes variables de entorno:
+   - `SECRET_KEY`: Un valor aleatorio y seguro
+   - `FLASK_ENV`: production
+
+La aplicación estará disponible en la URL proporcionada por Render una vez que se complete el despliegue.
+
 ## Características
 
 - Sistema de autenticación (registro e inicio de sesión)
