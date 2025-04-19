@@ -21,14 +21,15 @@ class Database:
         Returns:
             Una conexión a la base de datos
         """
-        if DB_TYPE == 'postgresql':
+        # Siempre usar PostgreSQL en Render (producción)
+        if os.environ.get('DATABASE_URL') and os.environ.get('FLASK_ENV') == 'production':
             # Conexión a PostgreSQL
             if dict_cursor:
                 return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
             else:
                 return psycopg2.connect(DATABASE_URL)
         else:
-            # Conexión a SQLite
+            # Conexión a SQLite (para desarrollo)
             conn = sqlite3.connect(DATABASE_PATH)
             if dict_cursor:
                 conn.row_factory = sqlite3.Row
@@ -60,7 +61,8 @@ class Database:
             
             if commit:
                 conn.commit()
-                last_id = cursor.lastrowid if DB_TYPE == 'sqlite' else None
+                # Para SQLite, obtener lastrowid si está disponible
+                last_id = getattr(cursor, 'lastrowid', None)
                 affected = cursor.rowcount
                 cursor.close()
                 conn.close()
@@ -90,7 +92,8 @@ class Database:
         Returns:
             Boolean: True si la tabla existe, False en caso contrario
         """
-        if DB_TYPE == 'postgresql':
+        # Siempre usar PostgreSQL en Render (producción)
+        if os.environ.get('DATABASE_URL') and os.environ.get('FLASK_ENV') == 'production':
             query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)"
             result = Database.execute_query(query, (table_name,), fetchone=True)
             return result['exists'] if result else False

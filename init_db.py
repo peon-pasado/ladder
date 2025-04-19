@@ -6,7 +6,10 @@ from app.config import DATABASE_PATH, DB_TYPE, DATABASE_URL
 from app.db import Database
 
 def init_db():
-    print(f"Inicializando base de datos ({DB_TYPE})...")
+    is_production = os.environ.get('FLASK_ENV') == 'production'
+    using_postgres = os.environ.get('DATABASE_URL') is not None
+    
+    print(f"Inicializando base de datos {'PostgreSQL' if using_postgres and is_production else 'SQLite'} en {'producción' if is_production else 'desarrollo'}...")
     
     try:
         # Verificar si las tablas necesarias existen
@@ -15,7 +18,7 @@ def init_db():
         if not users_exists:
             print("Creando tabla de usuarios...")
             # Crear tabla de usuarios
-            if DB_TYPE == 'postgresql':
+            if using_postgres and is_production:
                 users_query = '''
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
@@ -40,7 +43,7 @@ def init_db():
             print("Tabla de usuarios creada correctamente")
             
             # Crear tabla para cuentas de Baekjoon
-            if DB_TYPE == 'postgresql':
+            if using_postgres and is_production:
                 baekjoon_query = '''
                 CREATE TABLE IF NOT EXISTS baekjoon_accounts (
                     id SERIAL PRIMARY KEY,
@@ -66,7 +69,7 @@ def init_db():
             print("Tabla de cuentas Baekjoon creada correctamente")
             
             # Crear tabla para problemas del ladder
-            if DB_TYPE == 'postgresql':
+            if using_postgres and is_production:
                 ladder_query = '''
                 CREATE TABLE IF NOT EXISTS ladder_problems (
                     id SERIAL PRIMARY KEY,
@@ -100,7 +103,7 @@ def init_db():
         if not solved_exists:
             print("Añadiendo tabla de problemas resueltos...")
             # Crear tabla para problemas resueltos con posición en leaderboard
-            if DB_TYPE == 'postgresql':
+            if using_postgres and is_production:
                 solved_query = '''
                 CREATE TABLE IF NOT EXISTS solved_problems (
                     id SERIAL PRIMARY KEY,
@@ -135,7 +138,7 @@ def init_db():
         if not whitelist_exists:
             print("Creando tabla para la whitelist de correos...")
             # Crear tabla para la whitelist de correos
-            if DB_TYPE == 'postgresql':
+            if using_postgres and is_production:
                 whitelist_query = '''
                 CREATE TABLE IF NOT EXISTS email_whitelist (
                     id SERIAL PRIMARY KEY,
@@ -157,7 +160,7 @@ def init_db():
             Database.execute_query(whitelist_query, commit=True)
             print("Tabla de whitelist de correos creada correctamente")
         
-        print(f"Base de datos {DB_TYPE} inicializada correctamente.")
+        print(f"Base de datos inicializada correctamente.")
         
     except Exception as e:
         print(f"Error al inicializar la base de datos: {e}")

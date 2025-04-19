@@ -8,7 +8,9 @@ if os.environ.get('DATABASE_URL'):
     # Usar PostgreSQL
     DATABASE_URL = os.environ.get('DATABASE_URL')
     DB_TYPE = 'postgresql'
-    DATABASE_PATH = None  # No se usa para PostgreSQL
+    # Asignar una ruta segura para SQLite aunque no se use
+    # Esto evita errores al intentar crear directorios inexistentes
+    DATABASE_PATH = 'app.db'  # Valor seguro que no requiere permisos especiales
 else:
     # Usar SQLite (para desarrollo o en caso de que no haya PostgreSQL)
     DB_TYPE = 'sqlite'
