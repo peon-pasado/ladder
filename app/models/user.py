@@ -2,7 +2,8 @@ from flask_login import UserMixin
 import sqlite3
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.config import DATABASE_PATH
+from app.config import DATABASE_PATH, DB_TYPE
+from app.db import Database
 
 class User(UserMixin):
     def __init__(self, id, username, email, password_hash, rating=1500):
@@ -14,12 +15,8 @@ class User(UserMixin):
     
     @staticmethod
     def get(user_id):
-        conn = sqlite3.connect(DATABASE_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-        user_data = cursor.fetchone()
-        conn.close()
+        query = "SELECT * FROM users WHERE id = %s" if DB_TYPE == 'postgresql' else "SELECT * FROM users WHERE id = ?"
+        user_data = Database.execute_query(query, (user_id,), fetchone=True)
         
         if user_data:
             # Check if 'rating' column exists in the result
@@ -41,12 +38,8 @@ class User(UserMixin):
     
     @staticmethod
     def get_by_username(username):
-        conn = sqlite3.connect(DATABASE_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-        user_data = cursor.fetchone()
-        conn.close()
+        query = "SELECT * FROM users WHERE username = %s" if DB_TYPE == 'postgresql' else "SELECT * FROM users WHERE username = ?"
+        user_data = Database.execute_query(query, (username,), fetchone=True)
         
         if user_data:
             # Check if 'rating' column exists in the result
@@ -68,20 +61,29 @@ class User(UserMixin):
     
     @staticmethod
     def create(username, email, password):
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
-        
         password_hash = generate_password_hash(password)
         
-        cursor.execute(
-            "INSERT INTO users (username, email, password_hash, rating) VALUES (?, ?, ?, ?)",
-            (username, email, password_hash, 1500)
+        query = """
+            INSERT INTO users (username, email, password_hash, rating) 
+            VALUES (%s, %s, %s, %s)
+        """ if DB_TYPE == 'postgresql' else """
+            INSERT INTO users (username, email, password_hash, rating) 
+            VALUES (?, ?, ?, ?)
+        """
+        
+        result = Database.execute_query(
+            query,
+            (username, email, password_hash, 1500),
+            commit=True
         )
         
-        conn.commit()
-        user_id = cursor.lastrowid
-        conn.close()
-        
+        user_id = result['lastrowid']
+        # En PostgreSQL, necesitamos obtener el ID generado de otra forma
+        if DB_TYPE == 'postgresql':
+            id_query = "SELECT id FROM users WHERE username = %s"
+            user_data = Database.execute_query(id_query, (username,), fetchone=True)
+            user_id = user_data['id'] if user_data else None
+            
         return User.get(user_id)
     
     def verify_password(self, password):
@@ -99,24 +101,25 @@ class User(UserMixin):
         Returns:
             Nuevo rating del usuario
         """
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
-        
         # Obtener el rating actual
-        cursor.execute("SELECT rating FROM users WHERE id = ?", (user_id,))
-        current_rating = cursor.fetchone()[0]
+        rating_query = "SELECT rating FROM users WHERE id = %s" if DB_TYPE == 'postgresql' else "SELECT rating FROM users WHERE id = ?"
+        current_rating_data = Database.execute_query(rating_query, (user_id,), fetchone=True)
+        
+        if not current_rating_data:
+            return None
+            
+        current_rating = current_rating_data['rating']
         
         # Calcular el nuevo rating (nunca menor que 0)
         new_rating = max(0, current_rating + delta_rating)
         
         # Actualizar el rating en la base de datos
-        cursor.execute(
-            "UPDATE users SET rating = ? WHERE id = ?", 
-            (new_rating, user_id)
+        update_query = "UPDATE users SET rating = %s WHERE id = %s" if DB_TYPE == 'postgresql' else "UPDATE users SET rating = ? WHERE id = ?"
+        Database.execute_query(
+            update_query, 
+            (new_rating, user_id),
+            commit=True
         )
-        
-        conn.commit()
-        conn.close()
         
         return new_rating
     
@@ -131,14 +134,8 @@ class User(UserMixin):
         Returns:
             Boolean: True si el correo está en la whitelist, False en caso contrario
         """
-        conn = sqlite3.connect(DATABASE_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT * FROM email_whitelist WHERE email = ?", (email,))
-        result = cursor.fetchone()
-        
-        conn.close()
+        query = "SELECT * FROM email_whitelist WHERE email = %s" if DB_TYPE == 'postgresql' else "SELECT * FROM email_whitelist WHERE email = ?"
+        result = Database.execute_query(query, (email,), fetchone=True)
         
         return result is not None
         
@@ -154,23 +151,20 @@ class User(UserMixin):
         Returns:
             Boolean: True si se añadió correctamente, False si ya existía
         """
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
-        
         try:
-            cursor.execute(
-                "INSERT INTO email_whitelist (email, notes) VALUES (?, ?)",
-                (email, notes)
-            )
-            conn.commit()
-            success = True
-        except sqlite3.IntegrityError:
-            # El correo ya existe en la whitelist
-            success = False
-        finally:
-            conn.close()
+            query = """
+                INSERT INTO email_whitelist (email, notes) 
+                VALUES (%s, %s)
+            """ if DB_TYPE == 'postgresql' else """
+                INSERT INTO email_whitelist (email, notes) 
+                VALUES (?, ?)
+            """
             
-        return success
+            Database.execute_query(query, (email, notes), commit=True)
+            return True
+        except Exception:
+            # Asumir que ya existe (violación de clave única)
+            return False
         
     @staticmethod
     def remove_email_from_whitelist(email):
@@ -183,16 +177,10 @@ class User(UserMixin):
         Returns:
             Boolean: True si se eliminó correctamente, False si no existía
         """
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
+        query = "DELETE FROM email_whitelist WHERE email = %s" if DB_TYPE == 'postgresql' else "DELETE FROM email_whitelist WHERE email = ?"
+        result = Database.execute_query(query, (email,), commit=True)
         
-        cursor.execute("DELETE FROM email_whitelist WHERE email = ?", (email,))
-        rows_affected = cursor.rowcount
-        
-        conn.commit()
-        conn.close()
-        
-        return rows_affected > 0
+        return result['rowcount'] > 0
         
     @staticmethod
     def get_whitelist():
@@ -202,13 +190,10 @@ class User(UserMixin):
         Returns:
             List: Lista de diccionarios con los correos en la whitelist
         """
-        conn = sqlite3.connect(DATABASE_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        query = "SELECT * FROM email_whitelist ORDER BY added_at DESC"
+        results = Database.execute_query(query)
         
-        cursor.execute("SELECT * FROM email_whitelist ORDER BY added_at DESC")
-        results = [dict(row) for row in cursor.fetchall()]
-        
-        conn.close()
-        
+        # Convertir a lista de diccionarios si es necesario
+        if DB_TYPE == 'sqlite':
+            return [dict(row) for row in results]
         return results 
