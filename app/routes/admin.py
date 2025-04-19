@@ -161,25 +161,27 @@ def add_example_problems():
         if not account:
             flash('Error: Primero debes configurar una cuenta Baekjoon.', 'danger')
             return redirect(url_for('admin.setup_page'))
+            
+        # Limpiar problemas existentes para evitar conflictos
+        cursor.execute("DELETE FROM ladder_problems WHERE baekjoon_username = 'admin_baekjoon'")
         
-        # Crear algunos problemas de ejemplo
+        # Crear problemas de ejemplo secuenciales y con estado apropiado
         problem_count = 0
-        for i in range(1, 11):
+        for i in range(1, 51):  # Crear 50 problemas para tener suficientes
+            # Solo el primer problema es visible, el resto están ocultos
+            state = 'visible' if i == 1 else 'hidden'
+            
             cursor.execute("""
             INSERT INTO ladder_problems (baekjoon_username, position, problem_id, problem_title, state)
-            VALUES ('admin_baekjoon', %s, %s, %s, 'visible')
-            ON CONFLICT (baekjoon_username, position) DO UPDATE 
-            SET problem_id = EXCLUDED.problem_id, 
-                problem_title = EXCLUDED.problem_title,
-                state = EXCLUDED.state
-            """, (i, f"100{i}", f"Problema de ejemplo {i}"))
+            VALUES ('admin_baekjoon', %s, %s, %s, %s)
+            """, (i, f"{1000+i}", f"Ejemplo #{i} - Dificultad {i*100}", state))
             problem_count += 1
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        flash(f'Se han configurado {problem_count} problemas de ejemplo.', 'success')
+        flash(f'Se han configurado {problem_count} problemas correctamente. Solo el primero está visible, los demás se revelarán secuencialmente al resolver problemas.', 'success')
         
     except Exception as e:
         flash(f'Error: {str(e)}', 'danger')
