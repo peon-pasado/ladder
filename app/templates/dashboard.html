@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Bienvenido, {{ current_user.username }}</h2>
+                <div class="rating-info">
+                    <span class="badge bg-info">Rating: {{ current_user.rating }}</span>
+                    <span class="badge {% if buchholz > 0 %}bg-success{% elif buchholz < 0 %}bg-danger{% else %}bg-secondary{% endif %}">Buchholz: {{ buchholz|round }}</span>
+                    <span class="badge bg-dark" data-bs-toggle="tooltip" title="El buchholz es un valor que indica si estás resolviendo problemas por encima (positivo) o por debajo (negativo) de tu nivel actual">ⓘ</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <p>Desde aquí puedes administrar tus cuentas de Baekjoon y acceder a tu ladder personalizado.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Tus cuentas de Baekjoon</h4>
+            </div>
+            <div class="card-body">
+                {% if accounts %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Nombre de usuario</th>
+                                <th>Fecha de adición</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for account in accounts %}
+                            <tr>
+                                <td>
+                                    <a href="https://solved.ac/profile/{{ account.baekjoon_username }}" target="_blank">
+                                        {{ account.baekjoon_username }}
+                                    </a>
+                                </td>
+                                <td>{{ account.added_on }}</td>
+                                <td>
+                                    <a href="{{ url_for('main.view_ladder', account_id=account.id) }}" class="btn btn-sm btn-primary">
+                                        Ver Ladder
+                                    </a>
+                                    <form action="{{ url_for('main.delete_account', account_id=account.id) }}" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Estás seguro de eliminar esta cuenta?')">
+                                            Eliminar
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">No tienes cuentas de Baekjoon registradas.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Añadir nueva cuenta</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('main.dashboard') }}">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        {{ form.username.label(class="form-label") }}
+                        {{ form.username(class="form-control") }}
+                        {% for error in form.username.errors %}
+                        <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                        <small class="form-text text-muted">
+                            Ingresa tu nombre de usuario de Baekjoon para verificarlo y añadirlo a tu perfil.
+                        </small>
+                    </div>
+                    
+                    <div class="d-grid">
+                        {{ form.submit(class="btn btn-primary") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Inicializar tooltips de Bootstrap
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %} 

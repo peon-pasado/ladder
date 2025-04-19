@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Problemas Resueltos{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="card-title mb-0">Problemas Resueltos</h2>
+                    <div class="rating-info">
+                        <span class="badge bg-info">Rating: {{ current_user.rating }}</span>
+                        <span class="badge {% if buchholz > 0 %}bg-success{% elif buchholz < 0 %}bg-danger{% else %}bg-secondary{% endif %}">Buchholz: {{ buchholz|round }}</span>
+                        <span class="badge bg-dark" data-bs-toggle="tooltip" title="El buchholz es un valor que indica si estás resolviendo problemas por encima (positivo) o por debajo (negativo) de tu nivel actual">ⓘ</span>
+                    </div>
+                </div>
+                <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-secondary">Volver al Dashboard</a>
+            </div>
+            <div class="card-body">
+                {% if solved_problems %}
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Posición</th>
+                            <th>Fecha de resolución</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for problem in solved_problems %}
+                        <tr>
+                            <td><a href="https://www.acmicpc.net/problem/{{ problem.problem_id }}" target="_blank">{{ problem.problem_id }}</a></td>
+                            <td>{{ problem.problem_title }}</td>
+                            <td>{{ problem.position }}</td>
+                            <td>{{ problem.solved_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p>Aún no has resuelto ningún problema.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Inicializar tooltips de Bootstrap
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %} 

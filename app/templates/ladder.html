@@ -1,0 +1,620 @@
+{% extends "base.html" %}
+
+{% block title %}Ladder - {{ account.baekjoon_username }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="card-title mb-0">Ladder de {{ account.baekjoon_username }}</h2>
+                    <div class="rating-info">
+                        <span class="badge bg-info">Rating: {{ current_user.rating }}</span>
+                        <span class="badge {% if buchholz > 0 %}bg-success{% elif buchholz < 0 %}bg-danger{% else %}bg-secondary{% endif %}">Buchholz: {{ buchholz|round }}</span>
+                        <span class="badge bg-dark" data-bs-toggle="tooltip" title="El buchholz es un valor que indica si estás resolviendo problemas por encima (positivo) o por debajo (negativo) de tu nivel actual">ⓘ</span>
+                    </div>
+                </div>
+                <div>
+                    <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-secondary">Volver al Dashboard</a>
+                    <form action="{{ url_for('main.reset_ladder', account_id=account.id) }}" method="POST" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('¿Estás seguro de reiniciar el ladder? Perderás todo el progreso actual.')">
+                            Reiniciar Ladder
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="card-body">
+                <p>Cada cuadro representa un problema a resolver. Los problemas pueden estar en uno de estos estados:</p>
+                <div class="d-flex mb-3">
+                    <div class="me-3">
+                        <div class="badge bg-secondary">&nbsp;</div> Oculto
+                    </div>
+                    <div class="me-3">
+                        <div class="badge bg-primary">&nbsp;</div> Actual
+                    </div>
+                    <div class="me-3">
+                        <div class="badge bg-success">&nbsp;</div> Resuelto
+                    </div>
+                    <div>
+                        <div class="badge bg-danger">&nbsp;</div> No resuelto
+                    </div>
+                </div>
+                <p class="mb-0">
+                    <small class="text-muted">Tienes 3 horas para resolver cada problema desde que es revelado. Después de ese tiempo, el problema se marcará como no resuelto si no lo has completado.</small>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Problemas</h3>
+                {% if debug_time %}
+                <small class="text-muted">System time: {{ debug_time }}</small>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="ladder-container">
+                    {% for row in ladder_rows %}
+                    <div class="ladder-row d-flex justify-content-between my-2">
+                        {% for problem in row %}
+                        <div class="ladder-item">
+                            {% if problem.state == 'hidden' %}
+                            <div class="card bg-hidden text-center py-2">
+                                <div class="card-body p-1">
+                                    <h5 class="card-title">{{ problem.position }}</h5>
+                                    <p class="card-text">???</p>
+                                    <div class="btn-placeholder"></div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <!-- Cuadro pequeño -->
+                            <div class="card small-card {% if problem.state == 'current' %}bg-primary text-white{% elif problem.state == 'solved' %}bg-success text-white{% elif problem.state == 'unsolved' %}bg-unsolved{% endif %} text-center py-2" 
+                                {% if problem.state == 'current' and problem.revealed_at %}
+                                data-revealed-at="{{ problem.revealed_at }}"
+                                {% endif %}>
+                                <div class="card-body p-1">
+                                    <!-- Contenido para problemas no resueltos (sin tiempo agotado) -->
+                                    {% if problem.state == 'current' %}
+                                    <div class="small-card-content">
+                                        {% if problem.revealed_at %}
+                                        <h5 class="card-title m-0">{{ problem.problem_id }}</h5>
+                                        <div class="countdown small text-warning fw-bold"></div>
+                                        <button class="btn btn-sm btn-light mt-1 open-btn" onclick="showProblemDetails(this)">Detalles</button>
+                                        {% else %}
+                                        <button class="btn btn-primary w-75 open-btn" onclick="showProblemDetails(this)">Open</button>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <!-- Contenido para problemas con tiempo agotado -->
+                                    {% elif problem.state == 'unsolved' %}
+                                    <div class="small-card-content">
+                                        <h5 class="card-title m-0">{{ problem.problem_id }}</h5>
+                                        <div class="text-danger fw-bold">✕</div>
+                                        <button class="btn btn-sm btn-light mt-1 open-btn" onclick="showProblemDetails(this)">Detalles</button>
+                                    </div>
+                                    
+                                    <!-- Contenido para problemas resueltos -->
+                                    {% elif problem.state == 'solved' %}
+                                    <div class="small-card-content">
+                                        <h5 class="card-title m-0">{{ problem.problem_id }}</h5>
+                                        <div class="text-white fw-bold">AC</div>
+                                        <button class="btn btn-sm btn-light mt-1 open-btn" onclick="showProblemDetails(this)">Detalles</button>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <!-- Tarjeta grande con detalles (inicialmente oculta) -->
+                            <div class="card large-card detail-card {% if problem.state == 'current' %}bg-primary text-white{% elif problem.state == 'solved' %}bg-success text-white{% elif problem.state == 'unsolved' %}bg-unsolved{% endif %}" style="display: none;">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="m-0">Problema #{{ problem.problem_id }}</h5>
+                                    <button type="button" class="btn-close close-details" aria-label="Close" onclick="hideDetails(this)"></button>
+                                </div>
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2">{{ problem.problem_title }}</h6>
+                                    {% if problem.revealed_at %}
+                                    <p class="mb-2"><small>Revelado: {{ problem.revealed_at|replace('T', ' ')|replace('.000', '') }}</small></p>
+                                    {% endif %}
+                                    
+                                    <!-- Contenido para problemas no resueltos (sin tiempo agotado) -->
+                                    {% if problem.state == 'current' %}
+                                    <div class="time-container text-center p-2 rounded mb-3">
+                                        <div class="time-label">Tiempo restante:</div>
+                                        <div class="countdown large-countdown text-warning fw-bold"></div>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <a href="https://www.acmicpc.net/problem/{{ problem.problem_id }}" target="_blank" class="btn btn-sm btn-light">Ver problema</a>
+                                        <form action="{{ url_for('main.verify_problem_solved', account_id=account.id, problem_id=problem.id) }}" method="POST">
+                                            <input type="hidden" name="days_ago" value="30">
+                                            <button type="submit" class="btn btn-sm btn-info">Verificar</button>
+                                        </form>
+                                    </div>
+                                    <div class="timestamp-debug d-none small text-muted mt-2">
+                                        <small>{{ problem.revealed_at }}</small>
+                                    </div>
+                                    
+                                    <!-- Contenido para problemas con tiempo agotado -->
+                                    {% elif problem.state == 'unsolved' %}
+                                    <div class="text-danger fw-bold fs-4 mb-3">✕ Tiempo agotado</div>
+                                    <div>
+                                        <a href="https://www.acmicpc.net/problem/{{ problem.problem_id }}" target="_blank" class="btn btn-sm btn-light">Ver problema</a>
+                                    </div>
+                                    
+                                    <!-- Contenido para problemas resueltos -->
+                                    {% elif problem.state == 'solved' %}
+                                    <div class="text-white fw-bold fs-4 mb-3">AC - Aceptado</div>
+                                    <div>
+                                        <a href="https://www.acmicpc.net/problem/{{ problem.problem_id }}" target="_blank" class="btn btn-sm btn-light">Ver problema</a>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="confirmOpenModal" tabindex="-1" aria-labelledby="confirmOpenModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmOpenModalLabel">Confirmar apertura</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        ¿Estás seguro de que quieres abrir este problema? Una vez abierto, comenzará el conteo de 3 horas para resolverlo.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No</button>
+        <button type="button" class="btn btn-primary" id="confirmOpenBtn">Sí, abrir problema</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.ladder-container {
+    width: 100%;
+    overflow-x: auto;
+}
+.ladder-row {
+    width: 100%;
+    min-width: max-content;
+    display: flex;
+    flex-wrap: nowrap;
+}
+.ladder-item {
+    flex: 1;
+    margin: 0.15rem;
+    aspect-ratio: 1/1;
+    min-width: 110px;
+    max-width: 110px;
+    width: 110px;
+    height: 110px;
+    position: relative;
+}
+.ladder-item .card {
+    height: 100%;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.ladder-item .small-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+.ladder-item .card-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.5rem;
+    height: 100%;
+}
+.ladder-item .card-title {
+    font-size: 1.2rem;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    height: 1.5rem;
+}
+.ladder-item .card-text {
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    max-height: 2.4rem;
+    min-height: 2.4rem;
+}
+.ladder-item .btn {
+    padding: 0.15rem 0.5rem;
+    font-size: 0.75rem;
+}
+.btn-placeholder {
+    height: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+.bg-unsolved {
+    background-color: #444444 !important;
+    color: white !important;
+}
+.bg-hidden {
+    background-color: #666666 !important;
+    color: white !important;
+}
+.countdown {
+    margin-bottom: 0.25rem;
+    font-weight: bold;
+}
+.large-countdown {
+    font-size: 2rem;
+    letter-spacing: 2px;
+    text-align: center;
+    font-family: monospace;
+    margin: 8px 0;
+}
+.time-container {
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.time-label {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+.large-card {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 90%;
+    width: 320px;
+    max-height: 400px;
+    aspect-ratio: 1/1.2;
+    z-index: 1000;
+    box-shadow: 0 0 15px rgba(0,0,0,0.3);
+    overflow-y: auto;
+}
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 999;
+}
+.small-card-content {
+    min-height: 50px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+</style>
+
+<script>
+// Función para mostrar los detalles del problema
+function showProblemDetails(btn) {
+    const cardBody = btn.closest('.ladder-item');
+    const detailCard = cardBody.querySelector('.detail-card');
+    const smallCard = cardBody.querySelector('.small-card');
+    const smallCardContent = smallCard.querySelector('.small-card-content');
+    
+    // Check if this is an unrevealed problem (has Open button)
+    const isUnrevealed = smallCard.classList.contains('bg-primary') && 
+                        (!smallCard.hasAttribute('data-revealed-at') || !smallCard.getAttribute('data-revealed-at'));
+    
+    if (isUnrevealed) {
+        // Use Bootstrap modal for confirmation
+        const confirmModal = new bootstrap.Modal(document.getElementById('confirmOpenModal'));
+        
+        // Set up the confirmation button
+        const confirmBtn = document.getElementById('confirmOpenBtn');
+        const handleConfirm = function() {
+            // Clean up the event listener
+            confirmBtn.removeEventListener('click', handleConfirm);
+            
+            // Hide the modal
+            confirmModal.hide();
+            
+            // Continue with opening the problem
+            openProblemDetails();
+        };
+        
+        // Add event listener to the confirm button
+        confirmBtn.addEventListener('click', handleConfirm);
+        
+        // Show the modal
+        confirmModal.show();
+        
+        // When modal is hidden, remove the event listener to prevent memory leaks
+        document.getElementById('confirmOpenModal').addEventListener('hidden.bs.modal', function() {
+            confirmBtn.removeEventListener('click', handleConfirm);
+        }, { once: true });
+        
+        return; // Exit the function and wait for user confirmation
+    }
+    
+    // If not unrevealed, proceed directly
+    openProblemDetails();
+    
+    // Function to handle the actual opening of problem details
+    function openProblemDetails() {
+        // Crear overlay
+        const overlay = document.createElement('div');
+        overlay.classList.add('overlay');
+        document.body.appendChild(overlay);
+        
+        // Mostrar tarjeta de detalles
+        if (detailCard) {
+            detailCard.style.display = 'block';
+            
+            // Copiar data-revealed-at del small-card al detail-card si existe
+            if (smallCard && smallCard.hasAttribute('data-revealed-at')) {
+                const revealedAt = smallCard.getAttribute('data-revealed-at');
+                detailCard.setAttribute('data-revealed-at', revealedAt);
+            }
+            
+            // Si es un problema 'current' y no tiene revealed_at, establecerlo ahora y actualizar en la BD
+            if (isUnrevealed) {
+                
+                // Obtener el ID del problema
+                let problemId = null;
+                // Extraer el ID del formulario correctamente (es el penúltimo segmento de la URL)
+                const form = detailCard.querySelector('form');
+                if (form && form.action) {
+                    const urlParts = form.action.split('/');
+                    problemId = urlParts[urlParts.length - 2]; // Penúltimo segmento
+                }
+                
+                if (problemId) {
+                    // Realizar una solicitud AJAX para establecer el revealed_at en el servidor
+                    fetch(`/set_revealed_at/${problemId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Actualizar el atributo data-revealed-at en ambas tarjetas
+                            smallCard.setAttribute('data-revealed-at', data.revealed_at);
+                            detailCard.setAttribute('data-revealed-at', data.revealed_at);
+                            
+                            // Actualizar el contenido de la tarjeta pequeña para mostrar ID y countdown
+                            if (smallCardContent) {
+                                // Obtener el ID del problema del detalle
+                                const problemIdElement = detailCard.querySelector('.card-header h5');
+                                let problemIdText = '';
+                                if (problemIdElement) {
+                                    const match = problemIdElement.textContent.match(/#(\d+)/);
+                                    if (match && match[1]) {
+                                        problemIdText = match[1];
+                                    }
+                                }
+                                
+                                // Actualizar el contenido de la small card
+                                smallCardContent.innerHTML = `
+                                    <h5 class="card-title m-0">${problemIdText}</h5>
+                                    <div class="countdown small text-warning fw-bold"></div>
+                                    <button class="btn btn-sm btn-light mt-1 open-btn" onclick="showProblemDetails(this)">Detalles</button>
+                                `;
+                            }
+                            
+                            // Iniciar el contador
+                            updateCountdowns();
+                            
+                            // Mostrar el timestamp en la interfaz si es necesario
+                            const timestampElement = detailCard.querySelector('p small');
+                            if (timestampElement) {
+                                const formattedTime = data.revealed_at.replace('T', ' ').replace(/\.\d+$/, '');
+                                timestampElement.textContent = `Revelado: ${formattedTime}`;
+                            }
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                }
+            }
+            
+            // Actualizar el tiempo inmediatamente en la tarjeta grande si hay un contador
+            const largeCountdown = detailCard.querySelector('.large-countdown');
+            const smallCountdown = smallCard.querySelector('.countdown');
+            
+            if (largeCountdown && smallCountdown && smallCountdown.textContent) {
+                largeCountdown.textContent = smallCountdown.textContent;
+                largeCountdown.className = smallCountdown.className.replace('small', 'large-countdown');
+            }
+        }
+        
+        // Iniciar contadores en la tarjeta grande
+        updateCountdowns();
+        
+        // Agregar evento para cerrar al hacer clic en el overlay
+        overlay.addEventListener('click', function() {
+            hideDetails(cardBody.querySelector('.close-details'));
+        });
+    }
+}
+
+// Función para ocultar los detalles
+function hideDetails(btn) {
+    const detailCard = btn.closest('.detail-card');
+    detailCard.style.display = 'none';
+    
+    // Eliminar overlay
+    const overlay = document.querySelector('.overlay');
+    if (overlay) {
+        overlay.remove();
+    }
+}
+
+// Función para actualizar los contadores de tiempo de los problemas actuales
+function updateCountdowns() {
+    const currentProblems = document.querySelectorAll('[data-revealed-at]');
+    
+    currentProblems.forEach(card => {
+        const revealedAt = card.getAttribute('data-revealed-at');
+        if (!revealedAt) {
+            console.log("Problem has no revealed_at attribute");
+            return;
+        }
+        
+        // Buscar contadores en la tarjeta actual
+        const countdowns = card.querySelectorAll('.countdown');
+        if (countdowns.length === 0) return;
+        
+        try {
+            // Get the fixed start time from localStorage or set it if not exists
+            let problemId;
+            
+            // Intentar obtener el ID del problema de diferentes maneras
+            const form = card.closest('.ladder-item')?.querySelector('form');
+            if (form) {
+                problemId = form.action.split('/').pop();
+            } else {
+                // Alternativa: intentar obtenerlo del título
+                const titleElement = card.querySelector('.card-title, .card-subtitle, h5, h6');
+                if (titleElement && titleElement.textContent) {
+                    const match = titleElement.textContent.match(/#?(\d+)/);
+                    if (match && match[1]) {
+                        problemId = match[1];
+                    }
+                }
+            }
+            
+            if (!problemId) {
+                console.error("No se pudo obtener el ID del problema");
+                return;
+            }
+            
+            const startTimeKey = `problem_${problemId}_start_time`;
+            let startTime = localStorage.getItem(startTimeKey);
+            
+            // Verificar si debemos reiniciar el tiempo basado en el revealed_at de la BD
+            const revealedDate = new Date(revealedAt);
+            const savedRevealedKey = `problem_${problemId}_revealed_at`;
+            const savedRevealed = localStorage.getItem(savedRevealedKey);
+            
+            // Si la fecha de revelación cambió o no existe, reiniciar el temporizador
+            if (!savedRevealed || savedRevealed !== revealedAt) {
+                console.log(`Reiniciando temporizador para el problema ${problemId}`);
+                localStorage.setItem(savedRevealedKey, revealedAt);
+                localStorage.removeItem(startTimeKey); // Forzar reinicio del tiempo
+                startTime = null; // Reiniciar localmente
+            }
+            
+            // If no start time is stored yet, set it now
+            if (!startTime) {
+                // Set start time to now
+                startTime = new Date().getTime();
+                localStorage.setItem(startTimeKey, startTime);
+            } else {
+                // Convert from string to number
+                startTime = parseInt(startTime);
+            }
+            
+            // Calculate end time (3 hours from start time)
+            const endTime = startTime + (3 * 60 * 60 * 1000);
+            
+            // Get current time
+            const now = new Date().getTime();
+            
+            // Calculate time remaining
+            const timeRemaining = endTime - now;
+            
+            if (timeRemaining <= 0) {
+                // Time is up
+                countdowns.forEach(countdown => {
+                    countdown.textContent = "¡Tiempo agotado!";
+                    countdown.classList.remove('text-warning');
+                    countdown.classList.add('text-danger');
+                });
+            } else {
+                // Still have time remaining
+                const hours = Math.floor(timeRemaining / (60 * 60 * 1000));
+                const minutes = Math.floor((timeRemaining % (60 * 60 * 1000)) / (60 * 1000));
+                const seconds = Math.floor((timeRemaining % (60 * 1000)) / 1000);
+                
+                // Format with leading zeros
+                const hoursStr = hours.toString().padStart(2, '0');
+                const minutesStr = minutes.toString().padStart(2, '0');
+                const secondsStr = seconds.toString().padStart(2, '0');
+                
+                countdowns.forEach(countdown => {
+                    countdown.textContent = `${hoursStr}:${minutesStr}:${secondsStr}`;
+                    
+                    // Change color when time is running low
+                    if (timeRemaining < (30 * 60 * 1000)) { // 30 minutes
+                        countdown.classList.remove('text-warning');
+                        countdown.classList.add('text-danger');
+                    } else {
+                        countdown.classList.remove('text-danger');
+                        countdown.classList.add('text-warning');
+                    }
+                });
+            }
+        } catch (error) {
+            console.error("Error al procesar la fecha:", error, card);
+            countdowns.forEach(countdown => {
+                countdown.textContent = "Error";
+                countdown.classList.remove('text-warning');
+                countdown.classList.add('text-danger');
+            });
+        }
+    });
+}
+
+// Actualizar contadores cada segundo
+setInterval(updateCountdowns, 1000);
+// Iniciar al cargar la página
+document.addEventListener('DOMContentLoaded', updateCountdowns);
+
+// Limpiar localStorage cuando se reinicia el ladder
+document.addEventListener('DOMContentLoaded', function() {
+    // Comprobar si acabamos de reiniciar el ladder (usando un parámetro de URL)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('reset') && urlParams.get('reset') === 'true') {
+        // Obtener todas las claves en localStorage que comienzan con "problem_"
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('problem_') || key.includes('countdown') || key.includes('ladder'))) {
+                keysToRemove.push(key);
+            }
+        }
+        
+        // Eliminar todas las claves relacionadas con problemas y countdowns
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        
+        // Limpieza completa de datos relacionados con el ladder
+        console.log("localStorage limpiado para todos los problemas");
+        
+        // Eliminar el parámetro reset de la URL para evitar múltiples limpiezas
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+});
+
+// Inicializar tooltips de Bootstrap
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %} 
