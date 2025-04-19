@@ -2,13 +2,19 @@ import sqlite3
 import os
 from werkzeug.security import generate_password_hash
 import getpass
+from app.config import DATABASE_PATH
 
 def create_admin_user():
     admin_username = 'admin'
     admin_email = input("Introduce el correo del administrador: ")
     admin_password = getpass.getpass("Introduce la contraseña del administrador: ")
     
-    conn = sqlite3.connect('app.db')
+    # Asegurarse de que el directorio existe
+    db_dir = os.path.dirname(DATABASE_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+    
+    conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
     # Comprobar si la tabla de whitelist existe

@@ -2,6 +2,7 @@ from flask_login import UserMixin
 import sqlite3
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
+from app.config import DATABASE_PATH
 
 class User(UserMixin):
     def __init__(self, id, username, email, password_hash, rating=1500):
@@ -13,7 +14,7 @@ class User(UserMixin):
     
     @staticmethod
     def get(user_id):
-        conn = sqlite3.connect('app.db')
+        conn = sqlite3.connect(DATABASE_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
@@ -40,7 +41,7 @@ class User(UserMixin):
     
     @staticmethod
     def get_by_username(username):
-        conn = sqlite3.connect('app.db')
+        conn = sqlite3.connect(DATABASE_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
@@ -67,7 +68,7 @@ class User(UserMixin):
     
     @staticmethod
     def create(username, email, password):
-        conn = sqlite3.connect('app.db')
+        conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         password_hash = generate_password_hash(password)
@@ -98,7 +99,7 @@ class User(UserMixin):
         Returns:
             Nuevo rating del usuario
         """
-        conn = sqlite3.connect('app.db')
+        conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         # Obtener el rating actual
@@ -130,7 +131,7 @@ class User(UserMixin):
         Returns:
             Boolean: True si el correo está en la whitelist, False en caso contrario
         """
-        conn = sqlite3.connect('app.db')
+        conn = sqlite3.connect(DATABASE_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
@@ -153,7 +154,7 @@ class User(UserMixin):
         Returns:
             Boolean: True si se añadió correctamente, False si ya existía
         """
-        conn = sqlite3.connect('app.db')
+        conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         try:
@@ -182,7 +183,7 @@ class User(UserMixin):
         Returns:
             Boolean: True si se eliminó correctamente, False si no existía
         """
-        conn = sqlite3.connect('app.db')
+        conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM email_whitelist WHERE email = ?", (email,))
@@ -201,7 +202,7 @@ class User(UserMixin):
         Returns:
             List: Lista de diccionarios con los correos en la whitelist
         """
-        conn = sqlite3.connect('app.db')
+        conn = sqlite3.connect(DATABASE_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         

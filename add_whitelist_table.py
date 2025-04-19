@@ -1,8 +1,14 @@
 import sqlite3
 import os
+from app.config import DATABASE_PATH
 
 def add_whitelist_table():
-    conn = sqlite3.connect('app.db')
+    # Asegurarse de que el directorio existe
+    db_dir = os.path.dirname(DATABASE_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+        
+    conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
     # Verificar si la tabla whitelist ya existe

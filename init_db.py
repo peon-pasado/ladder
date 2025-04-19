@@ -1,11 +1,17 @@
 import sqlite3
 import os
+from app.config import DATABASE_PATH
 
 def init_db():
-    db_exists = os.path.exists('app.db')
+    db_exists = os.path.exists(DATABASE_PATH)
+    
+    # Asegurarse de que el directorio existe
+    db_dir = os.path.dirname(DATABASE_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
     
     # Conectar a la base de datos (la crea si no existe)
-    conn = sqlite3.connect('app.db')
+    conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
     if not db_exists:
