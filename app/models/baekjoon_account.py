@@ -1,7 +1,10 @@
 import sqlite3
+import psycopg2
 import requests
 import re
 from datetime import datetime
+import os
+from app.config import DB_TYPE, DATABASE_URL
 
 class BaekjoonAccount:
     def __init__(self, id, user_id, baekjoon_username, added_on):
@@ -12,22 +15,26 @@ class BaekjoonAccount:
     
     @staticmethod
     def get_accounts_by_user_id(user_id):
-        conn = sqlite3.connect('app.db')
-        conn.row_factory = sqlite3.Row
+        # Usar PostgreSQL en lugar de SQLite
+        pg_url = DATABASE_URL
+        if 'postgresql:' not in pg_url:
+            pg_url = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+        
+        conn = psycopg2.connect(pg_url)
         cursor = conn.cursor()
         
         cursor.execute(
-            "SELECT * FROM baekjoon_accounts WHERE user_id = ? ORDER BY added_on DESC",
+            "SELECT * FROM baekjoon_accounts WHERE user_id = %s ORDER BY added_on DESC",
             (user_id,)
         )
         
         accounts = []
         for account_data in cursor.fetchall():
             accounts.append(BaekjoonAccount(
-                id=account_data['id'],
-                user_id=account_data['user_id'],
-                baekjoon_username=account_data['baekjoon_username'],
-                added_on=account_data['added_on']
+                id=account_data[0],          # id
+                user_id=account_data[1],     # user_id
+                baekjoon_username=account_data[2],  # baekjoon_username
+                added_on=account_data[3]     # added_on
             ))
         
         conn.close()
@@ -40,21 +47,26 @@ class BaekjoonAccount:
             return False, "La cuenta de Baekjoon no existe"
         
         try:
-            conn = sqlite3.connect('app.db')
+            # Usar PostgreSQL en lugar de SQLite
+            pg_url = DATABASE_URL
+            if 'postgresql:' not in pg_url:
+                pg_url = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+            
+            conn = psycopg2.connect(pg_url)
             cursor = conn.cursor()
             
             cursor.execute(
-                "INSERT INTO baekjoon_accounts (user_id, baekjoon_username) VALUES (?, ?)",
-                (user_id, baekjoon_username)
+                "INSERT INTO baekjoon_accounts (user_id, baekjoon_username, added_on) VALUES (%s, %s, %s) RETURNING id",
+                (user_id, baekjoon_username, datetime.now())
             )
             
+            new_id = cursor.fetchone()[0]
             conn.commit()
-            new_id = cursor.lastrowid
             conn.close()
             
             return True, new_id
-        except sqlite3.IntegrityError:
-            return False, "Ya tienes esta cuenta registrada"
+        except Exception as e:
+            return False, f"Error al agregar la cuenta: {str(e)}"
     
     @staticmethod
     def verify_account(username):
@@ -98,11 +110,16 @@ class BaekjoonAccount:
     @staticmethod
     def delete_account(account_id, user_id):
         """Eliminar una cuenta de Baekjoon"""
-        conn = sqlite3.connect('app.db')
+        # Usar PostgreSQL en lugar de SQLite
+        pg_url = DATABASE_URL
+        if 'postgresql:' not in pg_url:
+            pg_url = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+        
+        conn = psycopg2.connect(pg_url)
         cursor = conn.cursor()
         
         cursor.execute(
-            "DELETE FROM baekjoon_accounts WHERE id = ? AND user_id = ?",
+            "DELETE FROM baekjoon_accounts WHERE id = %s AND user_id = %s",
             (account_id, user_id)
         )
         

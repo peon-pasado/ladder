@@ -4,100 +4,97 @@ import sys
 import psycopg2
 from datetime import datetime, timezone
 
-# Obtener la URL de la base de datos
-DATABASE_URL = os.environ.get('DATABASE_URL')
+# URL de la base de datos
+DATABASE_URL = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
 
-def fix_ladder_problems():
-    """Corrige los problemas con el ladder"""
-    print("Iniciando corrección del ladder...")
+print(f"Conectando a PostgreSQL con URL: {DATABASE_URL}")
+
+try:
+    # Conectar a la base de datos
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
     
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        
-        # 1. Corregir los estados de los problemas para asegurar que solo el siguiente esté visible
-        print("Corrigiendo estados de los problemas...")
-        
-        # Verificar si hay problemas en la base de datos
-        cursor.execute("SELECT COUNT(*) FROM ladder_problems")
-        count = cursor.fetchone()[0]
-        
-        if count == 0:
-            print("No hay problemas en la base de datos. Primero configura los problemas.")
-            return
-            
-        # Marcar todos los problemas como ocultos inicialmente
-        cursor.execute("UPDATE ladder_problems SET state = 'hidden'")
-        
-        # Obtener el último problema resuelto para cada usuario
-        cursor.execute("""
-        SELECT baekjoon_username, MAX(position) as last_solved
-        FROM solved_problems
-        GROUP BY baekjoon_username
-        """)
-        
-        users_progress = cursor.fetchall()
-        
-        # Si no hay progreso, hacer visible solo el primer problema para cada usuario
-        if not users_progress:
-            cursor.execute("""
-            UPDATE ladder_problems 
-            SET state = 'visible' 
-            WHERE (baekjoon_username, position) IN (
-                SELECT baekjoon_username, MIN(position)
-                FROM ladder_problems
-                GROUP BY baekjoon_username
-            )
-            """)
-            print("No hay problemas resueltos. Se hizo visible el primer problema para cada usuario.")
-        else:
-            # Para cada usuario, hacer visible el siguiente problema después del último resuelto
-            for username, last_position in users_progress:
-                # Hacer visible el siguiente problema
-                cursor.execute("""
-                UPDATE ladder_problems
-                SET state = 'visible'
-                WHERE baekjoon_username = %s AND position = %s
-                """, (username, last_position + 1))
-                
-                print(f"Para {username}: último problema resuelto es posición {last_position}. Revelado el siguiente.")
-        
-        # 2. Corregir los ratings de los usuarios
-        print("\nActualizando ratings de usuarios...")
-        
-        cursor.execute("""
-        SELECT u.id, COUNT(sp.id) as solved_count
-        FROM users u
-        JOIN baekjoon_accounts ba ON u.id = ba.user_id
-        LEFT JOIN solved_problems sp ON ba.baekjoon_username = sp.baekjoon_username
-        GROUP BY u.id
-        """)
-        
-        for user_id, solved_count in cursor.fetchall():
-            # Actualizar el rating basado en la cantidad de problemas resueltos
-            new_rating = solved_count * 100  # Fórmula básica: 100 puntos por problema
-            
-            cursor.execute("""
-            UPDATE users
-            SET rating = %s
-            WHERE id = %s
-            """, (new_rating, user_id))
-            
-            print(f"Usuario ID {user_id}: Rating actualizado a {new_rating} (basado en {solved_count} problemas resueltos)")
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        print("\n¡Corrección completada con éxito!")
-        print("Los problemas ahora deberían aparecer en el orden correcto y los ratings actualizados.")
-        
-    except Exception as e:
-        print(f"Error durante la corrección: {str(e)}")
-        
-if __name__ == "__main__":
-    if not DATABASE_URL:
-        print("Error: DATABASE_URL no está definida en las variables de entorno.")
+    # Usuario y problema específico
+    user_id = 1  # ID del usuario admin
+    problem_id = '21065'  # El problema que el usuario mencionó
+    
+    # 1. Obtener información de la cuenta del usuario
+    cursor.execute("SELECT baekjoon_username FROM baekjoon_accounts WHERE user_id = %s", (user_id,))
+    account = cursor.fetchone()
+    if not account:
+        print(f"ERROR: Usuario con ID {user_id} no tiene cuenta Baekjoon asociada")
         sys.exit(1)
-        
-    fix_ladder_problems() 
+    
+    baekjoon_username = account[0]
+    print(f"Cuenta Baekjoon: {baekjoon_username}")
+    
+    # 2. Verificar que el problema existe en la tabla problems
+    cursor.execute("SELECT problem_id, problem_title FROM problems WHERE problem_id = %s", (problem_id,))
+    problem_info = cursor.fetchone()
+    if not problem_info:
+        print(f"ERROR: El problema {problem_id} no existe en la tabla 'problems'")
+        sys.exit(1)
+    
+    problem_title = problem_info[1]
+    print(f"Problema {problem_id} encontrado: {problem_title}")
+    
+    # 3. Limpiar el ladder actual (eliminar todos los problemas)
+    print("\n=== REPARANDO LADDER ===")
+    print("Eliminando problemas actuales del ladder...")
+    
+    cursor.execute("""
+    DELETE FROM ladder_problems 
+    WHERE baekjoon_username = %s
+    """, (baekjoon_username,))
+    
+    deleted_count = cursor.rowcount
+    print(f"Se eliminaron {deleted_count} problemas del ladder")
+    
+    # 4. Agregar el problema 21065 como 'current'
+    print(f"Agregando problema {problem_id} como 'current'...")
+    
+    cursor.execute("""
+    INSERT INTO ladder_problems 
+    (baekjoon_username, position, problem_id, problem_title, state) 
+    VALUES (%s, %s, %s, %s, %s)
+    """, (baekjoon_username, 1, problem_id, problem_title, 'current'))
+    
+    # 5. Confirmar cambios y verificar
+    conn.commit()
+    print("Cambios guardados en la base de datos")
+    
+    # 6. Verificar que el problema está correctamente configurado
+    cursor.execute("""
+    SELECT id, position, problem_id, problem_title, state
+    FROM ladder_problems
+    WHERE baekjoon_username = %s
+    ORDER BY position
+    """, (baekjoon_username,))
+    
+    ladder_problems = cursor.fetchall()
+    
+    print("\n=== LADDER ACTUALIZADO ===")
+    if ladder_problems:
+        print(f"{'ID':<5} | {'Pos':<4} | {'Problem ID':<10} | {'State':<8} | {'Title'}")
+        print("-" * 80)
+        for problem in ladder_problems:
+            print(f"{problem[0]:<5} | {problem[1]:<4} | {problem[2]:<10} | {problem[4]:<8} | {problem[3]}")
+    else:
+        print("ERROR: No se encontraron problemas en el ladder después de la reparación")
+    
+    # Cerrar conexión
+    cursor.close()
+    conn.close()
+    
+    print("\n=== LADDER REPARADO EXITOSAMENTE ===")
+    print(f"Ahora el problema {problem_id} ({problem_title}) está configurado como 'current'")
+    print("Por favor visita /account/1/ladder para verificar que todo funcione correctamente")
+    print("Usa el botón 'Verificar' en la interfaz para verificar el problema")
+    
+except Exception as e:
+    print(f"ERROR: {str(e)}")
+    try:
+        conn.rollback()
+    except:
+        pass
+    sys.exit(1) 

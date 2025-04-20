@@ -9,6 +9,7 @@ from wtforms.validators import DataRequired
 from datetime import datetime, timedelta
 import sqlite3
 from app.utils.problem_recommender import ProblemRecommender
+import psycopg2
 
 main = Blueprint('main', __name__)
 
@@ -88,23 +89,26 @@ def view_ladder(account_id):
         LadderProblem.initialize_ladder(baekjoon_username, sample_problems)
         problems = LadderProblem.get_ladder_problems(baekjoon_username)
     
-    # Obtener los timestamps de revealed_at directamente de la base de datos
-    conn = sqlite3.connect('app.db')
-    conn.row_factory = sqlite3.Row
+    # Obtener los timestamps de revealed_at usando PostgreSQL
+    DATABASE_URL = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
     
     # Recuperar los timestamps para todos los problemas
     cursor.execute(
-        "SELECT id, revealed_at FROM ladder_problems WHERE baekjoon_username = ?", 
+        "SELECT id, revealed_at FROM ladder_problems WHERE baekjoon_username = %s", 
         (baekjoon_username,)
     )
     
     revealed_timestamps = {}
     for row in cursor.fetchall():
-        revealed_timestamps[row['id']] = row['revealed_at']
+        if row[1]:  # Si revealed_at no es NULL
+            revealed_timestamps[row[0]] = row[1].isoformat()
+        else:
+            revealed_timestamps[row[0]] = None
         
         # Log all timestamps for debugging
-        print(f"Problem ID: {row['id']}, revealed_at from DB: {row['revealed_at']}")
+        print(f"Problem ID: {row[0]}, revealed_at from DB: {revealed_timestamps[row[0]]}")
     
     conn.close()
     
@@ -279,83 +283,103 @@ def check_problem_solved(username, problem_id):
 @login_required
 def verify_problem_solved(account_id, problem_id):
     """Verifica automáticamente si un problema ha sido resuelto en Baekjoon y actualiza su estado"""
-    # Verificar que la cuenta pertenece al usuario actual
-    accounts = BaekjoonAccount.get_accounts_by_user_id(current_user.id)
-    account = next((acc for acc in accounts if acc.id == account_id), None)
-    
-    if not account:
-        flash('No tienes acceso a esta cuenta', 'danger')
-        return redirect(url_for('main.dashboard'))
-    
-    # Obtener el nombre de usuario de Baekjoon
-    baekjoon_username = account.baekjoon_username
-    
-    # Obtener todos los problemas del ladder para comprobar si falta poco para terminar
-    problems = LadderProblem.get_ladder_problems(baekjoon_username)
-    problem = next((p for p in problems if p.id == problem_id), None)
-    
-    if not problem:
-        flash('Problema no encontrado', 'danger')
-        return redirect(url_for('main.view_ladder', account_id=account_id))
-    
-    # Configurar el intervalo de tiempo
-    end_time = datetime.now()
-    
-    # Usar el revealed_at del problema como inicio del intervalo si está disponible
-    if problem.revealed_at:
-        try:
-            # Convertir la cadena revealed_at a objeto datetime
-            revealed_at = datetime.fromisoformat(problem.revealed_at.replace('Z', '+00:00'))
-            start_time = revealed_at
-            
-            # Verificar si ha pasado demasiado tiempo (más de 30 días)
-            max_days = 30
-            if (end_time - start_time).days > max_days:
-                # Si ha pasado demasiado tiempo, limitar el intervalo
-                start_time = end_time - timedelta(days=max_days)
-            else:
-                # Todavía está dentro del intervalo de tiempo válido
+    try:
+        # Verificar que la cuenta pertenece al usuario actual
+        accounts = BaekjoonAccount.get_accounts_by_user_id(current_user.id)
+        account = next((acc for acc in accounts if acc.id == account_id), None)
+        
+        if not account:
+            flash('No tienes acceso a esta cuenta', 'danger')
+            return redirect(url_for('main.dashboard'))
+        
+        # Obtener el nombre de usuario de Baekjoon
+        baekjoon_username = account.baekjoon_username
+        
+        # Obtener todos los problemas del ladder para comprobar si falta poco para terminar
+        problems = LadderProblem.get_ladder_problems(baekjoon_username)
+        problem = next((p for p in problems if p.id == problem_id), None)
+        
+        if not problem:
+            flash('Problema no encontrado', 'danger')
+            return redirect(url_for('main.view_ladder', account_id=account_id))
+        
+        # Configurar el intervalo de tiempo
+        end_time = datetime.now()
+        
+        # Usar el revealed_at del problema como inicio del intervalo si está disponible
+        if problem.revealed_at:
+            try:
+                # Convertir la cadena revealed_at a objeto datetime
+                revealed_at = datetime.fromisoformat(problem.revealed_at.replace('Z', '+00:00'))
+                start_time = revealed_at
+                
+                # Verificar si ha pasado demasiado tiempo (más de 30 días)
+                max_days = 30
+                if (end_time - start_time).days > max_days:
+                    # Si ha pasado demasiado tiempo, limitar el intervalo
+                    start_time = end_time - timedelta(days=max_days)
+                else:
+                    # Todavía está dentro del intervalo de tiempo válido
+                    success, message = BaekjoonAccount.check_problem_solved(
+                        baekjoon_username, problem.problem_id, start_time, end_time
+                    )
+            except (ValueError, TypeError):
+                # Si hay un error con el formato de la fecha, usar el intervalo predeterminado
+                days_ago = request.form.get('days_ago', 30, type=int)
+                start_time = end_time - timedelta(days=days_ago)
                 success, message = BaekjoonAccount.check_problem_solved(
                     baekjoon_username, problem.problem_id, start_time, end_time
                 )
-        except (ValueError, TypeError):
-            # Si hay un error con el formato de la fecha, usar el intervalo predeterminado
+        else:
+            # Si no hay revealed_at, usar el intervalo predeterminado
             days_ago = request.form.get('days_ago', 30, type=int)
             start_time = end_time - timedelta(days=days_ago)
             success, message = BaekjoonAccount.check_problem_solved(
                 baekjoon_username, problem.problem_id, start_time, end_time
             )
-    else:
-        # Si no hay revealed_at, usar el intervalo predeterminado
-        days_ago = request.form.get('days_ago', 30, type=int)
-        start_time = end_time - timedelta(days=days_ago)
-        success, message = BaekjoonAccount.check_problem_solved(
-            baekjoon_username, problem.problem_id, start_time, end_time
-        )
-    
-    if success:
-        # Si fue resuelto, actualizar el estado a 'solved'
-        if LadderProblem.update_problem_state(problem_id, 'solved'):
-            # Guardar el problema como resuelto para el usuario actual
-            # Esta función también revelará automáticamente el siguiente problema recomendado
-            LadderProblem.save_solved_problem(
-                current_user.id,
-                problem.problem_id,
-                problem.problem_title,
-                problem.position
-            )
+        
+        if success:
+            # Si fue resuelto, usar la función de PostgreSQL para actualizar el estado
+            # y aplicar todo lo necesario (ratings, etc.)
+            DATABASE_URL = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+            conn = psycopg2.connect(DATABASE_URL)
+            cursor = conn.cursor()
             
-            # Ya no necesitamos añadir más problemas aquí, ya que el recomendador añade uno nuevo cada vez
-            # que se resuelve un problema
+            # Llamar a la función de PostgreSQL que actualiza todo
+            cursor.execute('SELECT verify_solved_problem(%s, %s)', (problem_id, current_user.id))
+            result = cursor.fetchone()[0]
             
-            flash('¡Problema verificado como resuelto!', 'success')
-            flash('Se ha seleccionado un nuevo problema recomendado según tu rating actual y buchholz. ¡Haz clic en él para comenzar a resolverlo!', 'info')
+            conn.commit()
+            conn.close()
+            
+            if result:
+                # Obtener el rating actual y anterior para mostrarlo
+                conn = psycopg2.connect(DATABASE_URL)
+                cursor = conn.cursor()
+                
+                # Obtener el rating actual
+                cursor.execute('SELECT rating FROM users WHERE id = %s', (current_user.id,))
+                new_rating = cursor.fetchone()[0]
+                conn.close()
+                
+                # Mostrar mensaje con el cambio de rating (asumimos que ya cambió)
+                problem_level = problem.level or 1500
+                expected_increase = max(25, min(200, int(problem_level * 0.05)))
+                old_rating = new_rating - expected_increase
+                
+                flash(f'¡Problema verificado como resuelto! Tu rating ha aumentado de {old_rating} a {new_rating} (+{expected_increase})', 'success')
+                flash('Se ha seleccionado un nuevo problema recomendado según tu rating actual. ¡Haz clic en él para comenzar a resolverlo!', 'info')
+            else:
+                flash('No se pudo actualizar el estado del problema', 'danger')
         else:
-            flash('No se pudo actualizar el estado del problema', 'danger')
-    else:
-        flash(f'Verificación fallida: {message}', 'warning')
+            flash(f'Verificación fallida: {message}', 'warning')
+        
+        return redirect(url_for('main.view_ladder', account_id=account_id))
     
-    return redirect(url_for('main.view_ladder', account_id=account_id))
+    except Exception as e:
+        # Capturar cualquier error y mostrar un mensaje
+        flash(f'Error: {str(e)}', 'danger')
+        return redirect(url_for('main.view_ladder', account_id=account_id))
 
 @main.route('/solved-problems')
 @login_required
@@ -364,7 +388,36 @@ def solved_problems():
     from app.utils.problem_recommender import ProblemRecommender
     
     user_id = current_user.id
-    solved_problems = SolvedProblem.get_solved_problems(user_id)
+    
+    # Obtener problemas resueltos usando PostgreSQL
+    DATABASE_URL = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = True
+    cursor = conn.cursor()
+    
+    try:
+        # Usar la función de PostgreSQL para obtener problemas resueltos
+        cursor.execute("SELECT * FROM get_solved_problems(%s)", (user_id,))
+        solved_problems_data = cursor.fetchall()
+        
+        # Convertir los resultados a diccionarios para facilitar el acceso en la plantilla
+        solved_problems = []
+        for problem in solved_problems_data:
+            solved_problems.append({
+                'id': problem[0],
+                'problem_id': problem[1],
+                'problem_title': problem[2],
+                'position': problem[3],  # Note: este es problem_position de la función
+                'solved_at': problem[4],
+                'level': problem[5],
+                'rating_change': problem[6]
+            })
+    except Exception as e:
+        print(f"Error al obtener problemas resueltos: {str(e)}")
+        solved_problems = []  # Si hay error, devolver lista vacía
+    finally:
+        cursor.close()
+        conn.close()
     
     # Obtener el valor de buchholz
     buchholz_value = ProblemRecommender.calculate_buchholz(user_id)
@@ -402,23 +455,21 @@ def set_revealed_at(problem_id):
                 "message": "No tienes acceso a esta cuenta"
             }), 403
         
-        # Establecer revealed_at con la hora actual
-        from datetime import datetime, timedelta
-        future_time = datetime.now() + timedelta(hours=6)
-        timestamp = future_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
-        
-        conn = sqlite3.connect('app.db')
+        # Usar PostgreSQL para establecer revealed_at
+        DATABASE_URL = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+        conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE ladder_problems SET revealed_at = ? WHERE id = ?",
-            (timestamp, problem_id)
-        )
+        
+        # Llamar a la función de PostgreSQL para establecer revealed_at
+        cursor.execute("SELECT set_problem_revealed_at(%s)", (problem_id,))
+        timestamp = cursor.fetchone()[0]
+        
         conn.commit()
         conn.close()
         
         return jsonify({
             "success": True,
-            "revealed_at": timestamp
+            "revealed_at": timestamp.isoformat()
         })
         
     except Exception as e:
