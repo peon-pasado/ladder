@@ -292,7 +292,7 @@ def problems_management():
                           total_problems=total_problems)
 
 # Ruta alternativa para depuración
-@admin.route('/debug_problems')
+@admin.route('/debug_problems', endpoint='debug_problems_alt')
 @login_required
 def debug_problems():
     logger.debug("Accediendo a la ruta alternativa /debug_problems")
@@ -513,7 +513,7 @@ def gestionar_problemas():
                 <a href="{{ url_for('admin.diagnostico_csrf') }}" class="btn btn-outline-info btn-sm">
                     Diagnosticar CSRF
                 </a>
-                <a href="{{ url_for('admin.debug_problems') }}" class="btn btn-danger btn-sm">
+                <a href="{{ url_for('admin.debug_problems_direct') }}" class="btn btn-danger btn-sm">
                     Diagnosticar Tabla Problems (Directo)
                 </a>
             </div>
@@ -903,7 +903,7 @@ def lista_problemas():
             <a href="{{ url_for('admin.admin_index') }}" class="btn btn-primary">
                 <i class="fas fa-home"></i> Panel Admin
             </a>
-            <a href="{{ url_for('admin.debug_problems') }}" class="btn btn-danger">
+            <a href="{{ url_for('admin.debug_problems_direct') }}" class="btn btn-danger">
                 <i class="fas fa-bug"></i> Diagnóstico Directo
             </a>
         </div>
@@ -1111,9 +1111,9 @@ def init_problems_simple():
     
     return redirect(url_for('admin.gestionar_problemas'))
 
-@admin.route('/debug-problems')
+@admin.route('/debug-problems-direct')
 @login_required
-def debug_problems():
+def debug_problems_direct():
     """Diagnóstico directo de la tabla problems"""
     if current_user.id != 1:
         flash('Acceso denegado.', 'danger')
