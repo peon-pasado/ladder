@@ -77,21 +77,32 @@ class ProblemRecommender:
         return buchholz
     
     @staticmethod
-    def get_next_problem(user_id, baekjoon_username):
+    def reveal_next_problem(user_id, baekjoon_username):
         """
-        Recomienda el siguiente problema a revelar basado en el rating
-        del usuario y el valor buchholz.
+        Selecciona y añade el siguiente problema recomendado basado en el rating actual
         
         Args:
             user_id: ID del usuario
             baekjoon_username: Nombre de usuario de Baekjoon
             
         Returns:
-            ID del problema recomendado o None si no hay recomendaciones
+            ID del problema revelado o None si no hay más problemas
         """
+        # Obtener la próxima posición para el ladder
         conn = sqlite3.connect('app.db')
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+        
+        cursor.execute(
+            """
+            SELECT MAX(position) 
+            FROM ladder_problems
+            WHERE baekjoon_username = ?
+            """,
+            (baekjoon_username,)
+        )
+        
+        result = cursor.fetchone()
+        next_position = (result[0] or 0) + 1
         
         # Obtener el rating actual del usuario
         cursor.execute("SELECT rating FROM users WHERE id = ?", (user_id,))
@@ -102,11 +113,9 @@ class ProblemRecommender:
         buchholz = ProblemRecommender.calculate_buchholz(user_id)
         
         # Ajustar el rating objetivo según el buchholz
-        # Si el buchholz es positivo (el usuario resuelve problemas más difíciles),
-        # aumentamos el nivel recomendado. Si es negativo, lo reducimos.
         target_rating = user_rating + (buchholz * ProblemRecommender.BUCHHOLZ_WEIGHT)
         
-        # Rango de niveles a buscar (+-LEVEL_RANGE_OFFSET alrededor del rating objetivo)
+        # Rango de niveles a buscar
         min_level = int(target_rating - ProblemRecommender.LEVEL_RANGE_OFFSET)
         max_level = int(target_rating + ProblemRecommender.LEVEL_RANGE_OFFSET)
         
@@ -115,122 +124,156 @@ class ProblemRecommender:
         min_level += random_offset
         max_level += random_offset
         
-        # Primero obtener el número total de problemas que cumplen con el criterio
-        cursor.execute('''
-            SELECT COUNT(*)
-            FROM ladder_problems lp
-            JOIN problems p ON lp.problem_id = p.problem_id
-            WHERE lp.baekjoon_username = ? 
-            AND lp.state = 'hidden'
-            AND p.level BETWEEN ? AND ?
-        ''', (baekjoon_username, min_level, max_level))
+        # Obtener problemas que ya están en el ladder para excluirlos
+        cursor.execute(
+            """
+            SELECT problem_id 
+            FROM ladder_problems
+            WHERE baekjoon_username = ?
+            """,
+            (baekjoon_username,)
+        )
         
-        total_problems = cursor.fetchone()[0]
+        existing_problems = [row[0] for row in cursor.fetchall()]
         
-        if total_problems > 0:
-            # Si hay problemas disponibles, seleccionar un grupo aleatorio
-            # Añadir offset aleatorio para obtener diferentes resultados cada vez
-            random_offset = random.randint(0, max(0, total_problems - 1))
+        # Buscar un nuevo problema en la base de datos general
+        cursor.execute(
+            """
+            SELECT problem_id, problem_title, level
+            FROM problems 
+            WHERE level BETWEEN ? AND ?
+            AND problem_id NOT IN ({})
+            ORDER BY RANDOM()
+            LIMIT 10
+            """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
+            [min_level, max_level] + existing_problems if existing_problems else [min_level, max_level]
+        )
+        
+        candidates = cursor.fetchall()
+        
+        if candidates:
+            # Seleccionar un problema aleatorio
+            selected = random.choice(candidates)
+            problem_id = selected[0]
+            problem_title = selected[1]
             
-            # Limitar el número de resultados a considerar para evitar sesgo hacia niveles específicos
-            limit = min(10, total_problems)
+            # Insertar el nuevo problema en el ladder como 'current'
+            cursor.execute(
+                """
+                INSERT INTO ladder_problems 
+                (baekjoon_username, position, problem_id, problem_title, state) 
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (baekjoon_username, next_position, problem_id, problem_title, 'current')
+            )
             
-            cursor.execute('''
-                SELECT lp.id, lp.problem_id, p.level
-                FROM ladder_problems lp
-                JOIN problems p ON lp.problem_id = p.problem_id
-                WHERE lp.baekjoon_username = ? 
-                AND lp.state = 'hidden'
-                AND p.level BETWEEN ? AND ?
-                ORDER BY RANDOM()
-                LIMIT ?
-            ''', (baekjoon_username, min_level, max_level, limit))
+            # Obtener el ID del problema recién insertado
+            cursor.execute(
+                """
+                SELECT id FROM ladder_problems
+                WHERE baekjoon_username = ? AND problem_id = ? AND position = ?
+                """,
+                (baekjoon_username, problem_id, next_position)
+            )
             
-            candidate_problems = cursor.fetchall()
+            new_problem_id = cursor.fetchone()[0]
+            conn.commit()
             conn.close()
             
-            if candidate_problems:
-                # Elegir un problema aleatorio de los candidatos
-                selected_problem = random.choice(candidate_problems)
-                return selected_problem['id']
+            return new_problem_id
         
-        # Si no hay problemas en el rango ideal, buscar problemas ocultos con un rango más amplio
-        conn = sqlite3.connect('app.db')
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # Ampliar el rango de búsqueda
+        # Si no hay candidatos en el rango ideal, ampliar la búsqueda
         wider_min_level = int(target_rating - ProblemRecommender.LEVEL_RANGE_OFFSET * 2)
         wider_max_level = int(target_rating + ProblemRecommender.LEVEL_RANGE_OFFSET * 2)
         
-        cursor.execute('''
-            SELECT lp.id, lp.problem_id
-            FROM ladder_problems lp
-            JOIN problems p ON lp.problem_id = p.problem_id
-            WHERE lp.baekjoon_username = ? 
-            AND lp.state = 'hidden'
-            AND p.level BETWEEN ? AND ?
+        cursor.execute(
+            """
+            SELECT problem_id, problem_title, level
+            FROM problems 
+            WHERE level BETWEEN ? AND ?
+            AND problem_id NOT IN ({})
             ORDER BY RANDOM()
             LIMIT 5
-        ''', (baekjoon_username, wider_min_level, wider_max_level))
+            """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
+            [wider_min_level, wider_max_level] + existing_problems if existing_problems else [wider_min_level, wider_max_level]
+        )
         
         wider_candidates = cursor.fetchall()
         
         if wider_candidates:
-            # Si encontramos candidatos en el rango ampliado
-            selected_problem = random.choice(wider_candidates)
-            conn.close()
-            return selected_problem['id']
-        
-        # Si aún no hay candidatos, buscar cualquier problema oculto
-        cursor.execute('''
-            SELECT lp.id, lp.problem_id
-            FROM ladder_problems lp
-            WHERE lp.baekjoon_username = ? 
-            AND lp.state = 'hidden'
-            ORDER BY RANDOM()
-            LIMIT 5
-        ''', (baekjoon_username,))
-        
-        fallback_problems = cursor.fetchall()
-        
-        if not fallback_problems:
-            conn.close()
-            return None
+            # Seleccionar un problema aleatorio
+            selected = random.choice(wider_candidates)
+            problem_id = selected[0]
+            problem_title = selected[1]
             
-        # Seleccionar un problema aleatorio entre los disponibles
-        selected_problem = random.choice(fallback_problems)
-        conn.close()
-        return selected_problem['id']
-    
-    @staticmethod
-    def reveal_next_problem(user_id, baekjoon_username):
-        """
-        Revela el siguiente problema recomendado basado en el rating actual
-        
-        Args:
-            user_id: ID del usuario
-            baekjoon_username: Nombre de usuario de Baekjoon
+            # Insertar el nuevo problema en el ladder como 'current'
+            cursor.execute(
+                """
+                INSERT INTO ladder_problems 
+                (baekjoon_username, position, problem_id, problem_title, state) 
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (baekjoon_username, next_position, problem_id, problem_title, 'current')
+            )
             
-        Returns:
-            ID del problema revelado o None si no hay más problemas
-        """
-        problem_id = ProblemRecommender.get_next_problem(user_id, baekjoon_username)
+            # Obtener el ID del problema recién insertado
+            cursor.execute(
+                """
+                SELECT id FROM ladder_problems
+                WHERE baekjoon_username = ? AND problem_id = ? AND position = ?
+                """,
+                (baekjoon_username, problem_id, next_position)
+            )
+            
+            new_problem_id = cursor.fetchone()[0]
+            conn.commit()
+            conn.close()
+            
+            return new_problem_id
         
-        if not problem_id:
-            return None
-        
-        # Actualizar el estado del problema a 'current', pero sin revealed_at
-        # El revealed_at se establecerá cuando el usuario interactúe con el problema
-        conn = sqlite3.connect('app.db')
-        cursor = conn.cursor()
-        
+        # Si aún no hay candidatos, buscar cualquier problema no usado
         cursor.execute(
-            "UPDATE ladder_problems SET state = 'current' WHERE id = ?",
-            (problem_id,)
+            """
+            SELECT problem_id, problem_title
+            FROM problems 
+            WHERE problem_id NOT IN ({})
+            ORDER BY RANDOM()
+            LIMIT 1
+            """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
+            existing_problems if existing_problems else []
         )
         
-        conn.commit()
-        conn.close()
+        fallback = cursor.fetchone()
         
-        return problem_id 
+        if fallback:
+            # Usar cualquier problema disponible
+            problem_id = fallback[0]
+            problem_title = fallback[1]
+            
+            # Insertar el nuevo problema en el ladder como 'current'
+            cursor.execute(
+                """
+                INSERT INTO ladder_problems 
+                (baekjoon_username, position, problem_id, problem_title, state) 
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (baekjoon_username, next_position, problem_id, problem_title, 'current')
+            )
+            
+            # Obtener el ID del problema recién insertado
+            cursor.execute(
+                """
+                SELECT id FROM ladder_problems
+                WHERE baekjoon_username = ? AND problem_id = ? AND position = ?
+                """,
+                (baekjoon_username, problem_id, next_position)
+            )
+            
+            new_problem_id = cursor.fetchone()[0]
+            conn.commit()
+            conn.close()
+            
+            return new_problem_id
+            
+        conn.close()
+        return None 

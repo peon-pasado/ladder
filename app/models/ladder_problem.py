@@ -122,33 +122,16 @@ class LadderProblem:
         account_data = cursor.fetchone()
         user_id = account_data[0] if account_data else None
         
-        # Insertar todos los problemas en el orden original como 'hidden'
-        for position, problem in enumerate(problems_data, 1):
+        # Solo insertar el primer problema como 'current'
+        if problems_data and len(problems_data) > 0:
+            first_problem = problems_data[0]
             cursor.execute(
                 """
                 INSERT INTO ladder_problems 
                 (baekjoon_username, position, problem_id, problem_title, state) 
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (baekjoon_username, position, problem['id'], problem['title'], 'hidden')
-            )
-        
-        conn.commit()
-        
-        # Siempre establecer el primer problema (posición 1) como 'current'
-        cursor.execute(
-            """
-            SELECT id FROM ladder_problems 
-            WHERE baekjoon_username = ? AND position = 1
-            """,
-            (baekjoon_username,)
-        )
-        
-        first_problem = cursor.fetchone()
-        if first_problem:
-            cursor.execute(
-                "UPDATE ladder_problems SET state = 'current' WHERE id = ?",
-                (first_problem[0],)
+                (baekjoon_username, 1, first_problem['id'], first_problem['title'], 'current')
             )
             conn.commit()
         
