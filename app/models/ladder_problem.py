@@ -351,16 +351,15 @@ class LadderProblem:
         return sample_problems
     
     @staticmethod
-    def get_additional_problems(start_position, count):
+    def get_additional_problems(count):
         """
         Generar problemas adicionales para expandir el ladder
         
         Args:
-            start_position: Posición inicial para los nuevos problemas
             count: Cantidad de problemas a generar
             
         Returns:
-            Lista de diccionarios con los problemas generados
+            Lista de diccionarios con los problemas generados (sin posiciones)
         """
         import random
         
@@ -388,12 +387,10 @@ class LadderProblem:
         )
         
         additional_problems = []
-        for i, row in enumerate(cursor.fetchall()):
-            position = start_position + i
+        for row in cursor.fetchall():
             additional_problems.append({
                 "id": row["problem_id"],
-                "title": row["problem_title"],
-                "position": position
+                "title": row["problem_title"]
             })
         
         conn.close()
@@ -407,18 +404,15 @@ class LadderProblem:
             operations = ["Suma", "Resta", "Multiplicación", "División", "Potencia", "Ordenamiento", 
                          "Búsqueda", "Grafos", "Árboles", "Dinámico", "Combinatoria"]
             
-            start = len(additional_problems)
             for i in range(remaining):
-                position = start_position + start + i
-                problem_id = str(10000 + position)  # ID único basado en la posición
+                problem_id = str(10000 + len(additional_problems) + i)  # ID único
                 operation = random.choice(operations)
-                difficulty = "Nivel " + str((position // 10) + 1)
+                difficulty = "Nivel " + str((i // 5) + 1)
                 title = f"{operation} - {difficulty}"
                 
                 additional_problems.append({
                     "id": problem_id,
-                    "title": title,
-                    "position": position
+                    "title": title
                 })
         
         return additional_problems
@@ -435,15 +429,51 @@ class LadderProblem:
         conn = sqlite3.connect('app.db')
         cursor = conn.cursor()
         
-        for problem in problems_data:
+        # Primero obtener la posición máxima actual
+        cursor.execute(
+            """
+            SELECT MAX(position) 
+            FROM ladder_problems
+            WHERE baekjoon_username = ?
+            """,
+            (baekjoon_username,)
+        )
+        
+        result = cursor.fetchone()
+        max_position = result[0] if result[0] is not None else 0
+        
+        # Obtener los IDs de problemas que ya están en el ladder
+        cursor.execute(
+            """
+            SELECT problem_id 
+            FROM ladder_problems
+            WHERE baekjoon_username = ?
+            """,
+            (baekjoon_username,)
+        )
+        
+        existing_problem_ids = [row[0] for row in cursor.fetchall()]
+        
+        # Añadir problemas asegurándose de que no haya duplicados de IDs o posiciones
+        for i, problem in enumerate(problems_data):
+            # Verificar que el problema no esté ya en el ladder
+            if problem['id'] in existing_problem_ids:
+                continue
+                
+            # Asignar la siguiente posición disponible
+            next_position = max_position + i + 1
+            
             cursor.execute(
                 """
                 INSERT INTO ladder_problems 
                 (baekjoon_username, position, problem_id, problem_title, state) 
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (baekjoon_username, problem['position'], problem['id'], problem['title'], 'hidden')
+                (baekjoon_username, next_position, problem['id'], problem['title'], 'hidden')
             )
+            
+            # Añadir a la lista de problemas existentes para evitar duplicados
+            existing_problem_ids.append(problem['id'])
         
         conn.commit()
         conn.close()

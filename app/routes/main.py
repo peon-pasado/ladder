@@ -207,10 +207,25 @@ def update_problem_state(account_id, problem_id):
                     last_problem = problems[-1]
                     last_position = last_problem.position
                     
-                    # Generar 15 problemas más
-                    additional_problems = LadderProblem.get_additional_problems(last_position + 1, 15)
-                    LadderProblem.add_problems_to_ladder(baekjoon_username, additional_problems)
-                
+                    # Calcular última posición ocupada en el ladder
+                    cursor.execute(
+                        """
+                        SELECT MAX(position) FROM ladder_problems 
+                        WHERE baekjoon_username = ?
+                        """, 
+                        (baekjoon_username,)
+                    )
+                    
+                    result = cursor.fetchone()
+                    last_position = result[0] if result[0] is not None else 0
+                    
+                    # Si tenemos menos de 20 problemas, añadir más problemas automáticamente
+                    if last_position < 20:
+                        # Obtener problemas adicionales para expandir el ladder
+                        additional_problems = LadderProblem.get_additional_problems(15)
+                        LadderProblem.add_problems_to_ladder(baekjoon_username, additional_problems)
+                        flash("Se han añadido más problemas al ladder.", "info")
+
             else:
                 flash(f'El estado del problema ha sido actualizado a {new_state}', 'success')
         else:
@@ -357,9 +372,24 @@ def verify_problem_solved(account_id, problem_id):
                 last_problem = problems[-1]
                 last_position = last_problem.position
                 
-                # Generar 15 problemas más
-                additional_problems = LadderProblem.get_additional_problems(last_position + 1, 15)
-                LadderProblem.add_problems_to_ladder(baekjoon_username, additional_problems)
+                # Calcular última posición ocupada en el ladder
+                cursor.execute(
+                    """
+                    SELECT MAX(position) FROM ladder_problems 
+                    WHERE baekjoon_username = ?
+                    """, 
+                    (baekjoon_username,)
+                )
+                
+                result = cursor.fetchone()
+                last_position = result[0] if result[0] is not None else 0
+                
+                # Si tenemos menos de 20 problemas, añadir más problemas automáticamente
+                if last_position < 20:
+                    # Obtener problemas adicionales para expandir el ladder
+                    additional_problems = LadderProblem.get_additional_problems(15)
+                    LadderProblem.add_problems_to_ladder(baekjoon_username, additional_problems)
+                    flash("Se han añadido más problemas al ladder.", "info")
             
             flash('¡Problema verificado como resuelto!', 'success')
             flash('Se ha seleccionado un nuevo problema recomendado según tu rating actual y buchholz. ¡Haz clic en él para comenzar a resolverlo!', 'info')
