@@ -208,6 +208,8 @@ def update_problem_state(account_id, problem_id):
                     last_position = last_problem.position
                     
                     # Calcular última posición ocupada en el ladder
+                    conn = sqlite3.connect('app.db')
+                    cursor = conn.cursor()
                     cursor.execute(
                         """
                         SELECT MAX(position) FROM ladder_problems 
@@ -373,6 +375,8 @@ def verify_problem_solved(account_id, problem_id):
                 last_position = last_problem.position
                 
                 # Calcular última posición ocupada en el ladder
+                conn = sqlite3.connect('app.db')
+                cursor = conn.cursor()
                 cursor.execute(
                     """
                     SELECT MAX(position) FROM ladder_problems 
@@ -390,6 +394,8 @@ def verify_problem_solved(account_id, problem_id):
                     additional_problems = LadderProblem.get_additional_problems(15)
                     LadderProblem.add_problems_to_ladder(baekjoon_username, additional_problems)
                     flash("Se han añadido más problemas al ladder.", "info")
+                
+                conn.close()
             
             flash('¡Problema verificado como resuelto!', 'success')
             flash('Se ha seleccionado un nuevo problema recomendado según tu rating actual y buchholz. ¡Haz clic en él para comenzar a resolverlo!', 'info')
