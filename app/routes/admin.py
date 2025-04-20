@@ -513,6 +513,9 @@ def gestionar_problemas():
                 <a href="{{ url_for('admin.diagnostico_csrf') }}" class="btn btn-outline-info btn-sm">
                     Diagnosticar CSRF
                 </a>
+                <a href="{{ url_for('admin.debug_problems') }}" class="btn btn-danger btn-sm">
+                    Diagnosticar Tabla Problems (Directo)
+                </a>
             </div>
         </div>
     </div>
@@ -546,7 +549,7 @@ def add_single_problem():
         
         if not table_exists:
             flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
-            return redirect(url_for('admin.init_problems_table'))
+            return redirect(url_for('admin.init_problems_simple'))
             
     except Exception as e:
         logger.error(f"Error al verificar la tabla problems: {str(e)}")
@@ -556,7 +559,7 @@ def add_single_problem():
     # Log para depuración
     logger.debug("Procesando formulario de problema individual")
     
-    # Obtener el ID del problema directamente del formulario si no usa WTForms
+    # Obtener el ID del problema directamente del formulario
     problem_id = request.form.get('problem_id')
     
     if not problem_id:
@@ -568,8 +571,42 @@ def add_single_problem():
         problem_info = LadderProblem.get_problem_info_from_solved_ac(str(problem_id))
         
         if problem_info:
-            flash(f'Problema "{problem_info["title"]}" agregado correctamente.', 'success')
-            logger.debug(f"Problema agregado: {problem_id}, {problem_info['title']}")
+            # Verificar que el problema se guardó correctamente
+            conn = psycopg2.connect(DATABASE_URL)
+            cursor = conn.cursor()
+            
+            # Verificar si el problema se agregó a la BD
+            cursor.execute("SELECT problem_id FROM problems WHERE problem_id = %s", (str(problem_id),))
+            exists = cursor.fetchone()
+            
+            if exists:
+                flash(f'Problema "{problem_info["title"]}" (ID: {problem_id}) agregado correctamente.', 'success')
+                logger.debug(f"Problema agregado: {problem_id}, {problem_info['title']}")
+            else:
+                # Intentar agregarlo manualmente
+                cursor.execute(
+                    """
+                    INSERT INTO problems 
+                    (problem_id, problem_title, tier, tags, solved_count, level, 
+                     accepted_user_count, average_tries) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        problem_id, 
+                        problem_info["title"], 
+                        problem_info.get("tier", 0), 
+                        problem_info.get("tags", ""), 
+                        problem_info.get("solved_count", 0),
+                        problem_info.get("level", 0),
+                        problem_info.get("accepted_user_count", 0),
+                        problem_info.get("average_tries", 0.0)
+                    )
+                )
+                conn.commit()
+                flash(f'Problema "{problem_info["title"]}" (ID: {problem_id}) agregado manualmente.', 'success')
+            
+            cursor.close()
+            conn.close()
         else:
             flash(f'No se pudo obtener información del problema {problem_id}.', 'warning')
             logger.warning(f"No se pudo obtener info del problema: {problem_id}")
@@ -607,7 +644,7 @@ def add_problem_range():
         
         if not table_exists:
             flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
-            return redirect(url_for('admin.init_problems_table'))
+            return redirect(url_for('admin.init_problems_simple'))
             
     except Exception as e:
         logger.error(f"Error al verificar la tabla problems: {str(e)}")
@@ -642,13 +679,56 @@ def add_problem_range():
     
     try:
         added_count = 0
+        problems_added = []
+        
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
         for problem_id in range(start_id, end_id + 1):
             logger.debug(f"Procesando problema en rango: {problem_id}")
             problem_info = LadderProblem.get_problem_info_from_solved_ac(str(problem_id))
+            
             if problem_info:
-                added_count += 1
+                try:
+                    # Intentar insertar directamente
+                    cursor.execute(
+                        """
+                        INSERT INTO problems 
+                        (problem_id, problem_title, tier, tags, solved_count, level, 
+                         accepted_user_count, average_tries) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            str(problem_id), 
+                            problem_info["title"], 
+                            problem_info.get("tier", 0), 
+                            problem_info.get("tags", ""), 
+                            problem_info.get("solved_count", 0),
+                            problem_info.get("level", 0),
+                            problem_info.get("accepted_user_count", 0),
+                            problem_info.get("average_tries", 0.0)
+                        )
+                    )
+                    conn.commit()
+                    added_count += 1
+                    problems_added.append(f"{problem_id} ({problem_info['title']})")
+                except Exception as e:
+                    # Si hay un error (como duplicado), solo lo registramos
+                    logger.warning(f"Error al insertar problema {problem_id}: {str(e)}")
+                    conn.rollback()
         
-        flash(f'Se agregaron {added_count} problemas correctamente.', 'success')
+        cursor.close()
+        conn.close()
+        
+        if added_count > 0:
+            if added_count <= 5:
+                problem_list = ", ".join(problems_added)
+                flash(f'Se agregaron {added_count} problemas correctamente: {problem_list}', 'success')
+            else:
+                flash(f'Se agregaron {added_count} problemas correctamente.', 'success')
+        else:
+            flash('No se pudo agregar ningún problema. Posiblemente ya existen en la base de datos.', 'warning')
+        
         logger.debug(f"Total problemas agregados en rango: {added_count}")
     
     except Exception as e:
@@ -738,12 +818,10 @@ def lista_problemas():
         """)
         
         table_exists = cursor.fetchone()[0]
-        cursor.close()
-        conn.close()
         
         if not table_exists:
             flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
-            return redirect(url_for('admin.init_problems_table'))
+            return redirect(url_for('admin.init_problems_simple'))
             
     except Exception as e:
         logger.error(f"Error al verificar la tabla problems: {str(e)}")
@@ -774,25 +852,31 @@ def lista_problemas():
             LIMIT %s OFFSET %s
         """, (per_page, offset))
         
-        problems = [
-            {
-                'id': row[0],
-                'title': row[1],
-                'tier': row[2],
-                'tags': row[3],
-                'solved_count': row[4],
-                'level': row[5],
-                'accepted_user_count': row[6],
-                'average_tries': row[7]
+        problems = []
+        rows = cursor.fetchall()
+        
+        # Imprimir resultado bruto para depuración
+        logger.debug(f"Resultados de la consulta: {len(rows)} filas")
+        
+        for row in rows:
+            # Convertir valores None a valores por defecto para evitar errores
+            problem = {
+                'id': row[0] if row[0] is not None else '',
+                'title': row[1] if row[1] is not None else 'Sin título',
+                'tier': row[2] if row[2] is not None else 0,
+                'tags': row[3] if row[3] is not None else '',
+                'solved_count': row[4] if row[4] is not None else 0,
+                'level': row[5] if row[5] is not None else 0,
+                'accepted_user_count': row[6] if row[6] is not None else 0,
+                'average_tries': row[7] if row[7] is not None else 0.0
             }
-            for row in cursor.fetchall()
-        ]
+            problems.append(problem)
         
         cursor.close()
         conn.close()
         
         # Calcular información de paginación
-        total_pages = (total + per_page - 1) // per_page
+        total_pages = (total + per_page - 1) // per_page if total > 0 else 1
         logger.debug(f"Mostrando {len(problems)} problemas, página {page}/{total_pages}")
         
     except Exception as e:
@@ -818,6 +902,9 @@ def lista_problemas():
             </a>
             <a href="{{ url_for('admin.admin_index') }}" class="btn btn-primary">
                 <i class="fas fa-home"></i> Panel Admin
+            </a>
+            <a href="{{ url_for('admin.debug_problems') }}" class="btn btn-danger">
+                <i class="fas fa-bug"></i> Diagnóstico Directo
             </a>
         </div>
         
@@ -893,7 +980,8 @@ def lista_problemas():
                 </nav>
                 {% else %}
                 <div class="alert alert-warning">
-                    <p>No hay problemas en la base de datos.</p>
+                    <p>No hay problemas en la base de datos o hubo un error al obtenerlos.</p>
+                    <p>Si acabas de agregar problemas y no aparecen aquí, prueba con el diagnóstico directo.</p>
                 </div>
                 {% endif %}
             </div>
@@ -1021,4 +1109,117 @@ def init_problems_simple():
         logger.error(f"Error al inicializar la tabla problems: {str(e)}")
         flash(f'Error al inicializar la tabla: {str(e)}', 'danger')
     
-    return redirect(url_for('admin.gestionar_problemas')) 
+    return redirect(url_for('admin.gestionar_problemas'))
+
+@admin.route('/debug-problems')
+@login_required
+def debug_problems():
+    """Diagnóstico directo de la tabla problems"""
+    if current_user.id != 1:
+        flash('Acceso denegado.', 'danger')
+        return redirect(url_for('admin.admin_index'))
+    
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        # Verificar si la tabla problems existe
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'problems'
+        )
+        """)
+        
+        table_exists = cursor.fetchone()[0]
+        
+        if not table_exists:
+            return f"""
+            <h2>Diagnóstico de problemas</h2>
+            <p style="color: red;">La tabla 'problems' no existe en la base de datos.</p>
+            <a href="{url_for('admin.init_problems_simple')}">Inicializar tabla</a>
+            """
+        
+        # Ver estructura de la tabla
+        cursor.execute("""
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'problems'
+        """)
+        
+        structure = cursor.fetchall()
+        
+        # Contar total de registros
+        cursor.execute("SELECT COUNT(*) FROM problems")
+        count = cursor.fetchone()[0]
+        
+        # Ver algunos registros
+        cursor.execute("SELECT * FROM problems LIMIT 10")
+        records = cursor.fetchall()
+        
+        # Ver los últimos 5 problemas agregados
+        cursor.execute("SELECT * FROM problems ORDER BY id DESC LIMIT 5")
+        latest = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        # Generar informe HTML simple
+        columns = [col[0] for col in structure]
+        
+        html = f"""
+        <html>
+        <head>
+            <title>Diagnóstico de la tabla problems</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; padding: 20px; }}
+                table {{ border-collapse: collapse; width: 100%; }}
+                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                th {{ background-color: #f2f2f2; }}
+            </style>
+        </head>
+        <body>
+            <h2>Diagnóstico de la tabla problems</h2>
+            
+            <h3>Estructura de la tabla:</h3>
+            <table>
+                <tr>
+                    <th>Columna</th>
+                    <th>Tipo</th>
+                </tr>
+                {"".join(f"<tr><td>{col[0]}</td><td>{col[1]}</td></tr>" for col in structure)}
+            </table>
+            
+            <h3>Cantidad de registros: {count}</h3>
+            
+            <h3>Últimos 5 problemas agregados:</h3>
+            <table>
+                <tr>
+                    {"".join(f"<th>{col}</th>" for col in columns)}
+                </tr>
+                {"".join(f"<tr>{''.join(f'<td>{str(val)}</td>' for val in row)}</tr>" for row in latest)}
+            </table>
+            
+            <h3>Primeros 10 registros:</h3>
+            <table>
+                <tr>
+                    {"".join(f"<th>{col}</th>" for col in columns)}
+                </tr>
+                {"".join(f"<tr>{''.join(f'<td>{str(val)}</td>' for val in row)}</tr>" for row in records)}
+            </table>
+            
+            <p><a href="{url_for('admin.gestionar_problemas')}">Volver a Gestión</a></p>
+        </body>
+        </html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        logger.error(f"Error en diagnóstico de problemas: {str(e)}")
+        return f"""
+        <h2>Error en diagnóstico</h2>
+        <p style="color: red;">{str(e)}</p>
+        <a href="{url_for('admin.gestionar_problemas')}">Volver a Gestión</a>
+        """ 
