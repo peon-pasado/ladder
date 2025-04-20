@@ -197,36 +197,8 @@ def update_problem_state(account_id, problem_id):
                     flash(f'¡Problema resuelto correctamente! Tu rating ha aumentado de {old_rating} a {new_rating} (+{delta_rating})', 'success')
                     flash('Se ha seleccionado un nuevo problema recomendado según tu rating actual y buchholz. ¡Haz clic en él para comenzar a resolverlo!', 'info')
                 
-                # Comprobar si estamos cerca del final del ladder (últimos 5 problemas)
-                # Si es así, generar más problemas para hacer el ladder infinito
-                problems = LadderProblem.get_ladder_problems(baekjoon_username)
-                current_index = next((i for i, p in enumerate(problems) if p.id == problem_id), -1)
-                
-                if current_index + 6 >= len(problems):
-                    # Obtener el último problema para determinar la siguiente posición
-                    last_problem = problems[-1]
-                    last_position = last_problem.position
-                    
-                    # Calcular última posición ocupada en el ladder
-                    conn = sqlite3.connect('app.db')
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        """
-                        SELECT MAX(position) FROM ladder_problems 
-                        WHERE baekjoon_username = ?
-                        """, 
-                        (baekjoon_username,)
-                    )
-                    
-                    result = cursor.fetchone()
-                    last_position = result[0] if result[0] is not None else 0
-                    
-                    # Si tenemos menos de 20 problemas, añadir más problemas automáticamente
-                    if last_position < 20:
-                        # Obtener problemas adicionales para expandir el ladder
-                        additional_problems = LadderProblem.get_additional_problems(15)
-                        LadderProblem.add_problems_to_ladder(baekjoon_username, additional_problems)
-                        flash("Se han añadido más problemas al ladder.", "info")
+                # Ya no necesitamos añadir más problemas aquí, ya que el recomendador añade uno nuevo cada vez
+                # que se resuelve un problema
 
             else:
                 flash(f'El estado del problema ha sido actualizado a {new_state}', 'success')
@@ -365,37 +337,8 @@ def verify_problem_solved(account_id, problem_id):
                 problem.position
             )
             
-            # Comprobar si estamos cerca del final del ladder (últimos 5 problemas)
-            # Si es así, generar más problemas para hacer el ladder infinito
-            current_index = next((i for i, p in enumerate(problems) if p.id == problem_id), -1)
-            
-            if current_index + 6 >= len(problems):
-                # Obtener el último problema para determinar la siguiente posición
-                last_problem = problems[-1]
-                last_position = last_problem.position
-                
-                # Calcular última posición ocupada en el ladder
-                conn = sqlite3.connect('app.db')
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT MAX(position) FROM ladder_problems 
-                    WHERE baekjoon_username = ?
-                    """, 
-                    (baekjoon_username,)
-                )
-                
-                result = cursor.fetchone()
-                last_position = result[0] if result[0] is not None else 0
-                
-                # Si tenemos menos de 20 problemas, añadir más problemas automáticamente
-                if last_position < 20:
-                    # Obtener problemas adicionales para expandir el ladder
-                    additional_problems = LadderProblem.get_additional_problems(15)
-                    LadderProblem.add_problems_to_ladder(baekjoon_username, additional_problems)
-                    flash("Se han añadido más problemas al ladder.", "info")
-                
-                conn.close()
+            # Ya no necesitamos añadir más problemas aquí, ya que el recomendador añade uno nuevo cada vez
+            # que se resuelve un problema
             
             flash('¡Problema verificado como resuelto!', 'success')
             flash('Se ha seleccionado un nuevo problema recomendado según tu rating actual y buchholz. ¡Haz clic en él para comenzar a resolverlo!', 'info')
