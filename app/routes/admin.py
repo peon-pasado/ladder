@@ -1,9 +1,10 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, render_template_string
 from flask_login import login_required, current_user
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SubmitField
-from wtforms.validators import DataRequired, Email
+from wtforms import StringField, TextAreaField, SubmitField, IntegerField
+from wtforms.validators import DataRequired, Email, NumberRange
 from app.models.user import User
+from app.models.ladder_problem import LadderProblem
 import os
 import psycopg2
 from app.config import DATABASE_URL
@@ -14,6 +15,15 @@ class WhitelistForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
     notes = TextAreaField('Notas')
     submit = SubmitField('Añadir a la Whitelist')
+
+class ProblemRangeForm(FlaskForm):
+    start_id = IntegerField('ID Inicio', validators=[DataRequired(), NumberRange(min=1000)])
+    end_id = IntegerField('ID Fin', validators=[DataRequired(), NumberRange(min=1000)])
+    submit = SubmitField('Agregar Rango')
+
+class SingleProblemForm(FlaskForm):
+    problem_id = IntegerField('ID del Problema', validators=[DataRequired(), NumberRange(min=1000)])
+    submit = SubmitField('Agregar Problema')
 
 @admin.route('/')
 @login_required
@@ -213,4 +223,181 @@ def reset_problems():
     except Exception as e:
         flash(f'Error: {str(e)}', 'danger')
     
-    return redirect(url_for('admin.setup_page')) 
+    return redirect(url_for('admin.setup_page'))
+
+# ----------- PROBLEMA MANAGEMENT SECTION -------------
+
+@admin.route('/problems')
+@login_required
+def problems_management():
+    # Verificar si el usuario es admin
+    if current_user.id != 1:
+        flash('Acceso denegado. Solo administradores pueden acceder a esta sección.', 'danger')
+        return redirect(url_for('main.index'))
+    
+    # Preparar los formularios
+    range_form = ProblemRangeForm()
+    single_form = SingleProblemForm()
+    
+    # Obtener los últimos 20 problemas para mostrar en la página
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT problem_id, problem_title, tier, tags, solved_count
+            FROM problems
+            ORDER BY id DESC
+            LIMIT 20
+        """)
+        
+        recent_problems = [
+            {
+                'id': row[0],
+                'title': row[1],
+                'tier': row[2],
+                'tags': row[3],
+                'solved_count': row[4]
+            }
+            for row in cursor.fetchall()
+        ]
+        
+        # Contar el total de problemas
+        cursor.execute("SELECT COUNT(*) FROM problems")
+        total_problems = cursor.fetchone()[0]
+        
+        cursor.close()
+        conn.close()
+        
+    except Exception as e:
+        recent_problems = []
+        total_problems = 0
+        flash(f'Error al obtener problemas: {str(e)}', 'danger')
+    
+    return render_template('admin/problems.html', 
+                          range_form=range_form, 
+                          single_form=single_form,
+                          recent_problems=recent_problems,
+                          total_problems=total_problems)
+
+@admin.route('/problems/add-single', methods=['POST'])
+@login_required
+def add_single_problem():
+    # Verificar si el usuario es admin
+    if current_user.id != 1:
+        flash('Acceso denegado.', 'danger')
+        return redirect(url_for('admin.problems_management'))
+    
+    form = SingleProblemForm()
+    
+    if form.validate_on_submit():
+        problem_id = str(form.problem_id.data)
+        
+        try:
+            # Obtener información del problema desde Solved.ac
+            problem_info = LadderProblem.get_problem_info_from_solved_ac(problem_id)
+            
+            if problem_info:
+                flash(f'Problema "{problem_info["title"]}" agregado correctamente.', 'success')
+            else:
+                flash(f'No se pudo obtener información del problema {problem_id}.', 'warning')
+        
+        except Exception as e:
+            flash(f'Error al agregar el problema: {str(e)}', 'danger')
+    
+    return redirect(url_for('admin.problems_management'))
+
+@admin.route('/problems/add-range', methods=['POST'])
+@login_required
+def add_problem_range():
+    # Verificar si el usuario es admin
+    if current_user.id != 1:
+        flash('Acceso denegado.', 'danger')
+        return redirect(url_for('admin.problems_management'))
+    
+    form = ProblemRangeForm()
+    
+    if form.validate_on_submit():
+        start_id = form.start_id.data
+        end_id = form.end_id.data
+        
+        if start_id > end_id:
+            flash('El ID de inicio debe ser menor o igual al ID final.', 'danger')
+            return redirect(url_for('admin.problems_management'))
+        
+        if end_id - start_id > 100:
+            flash('El rango no puede contener más de 100 problemas.', 'danger')
+            return redirect(url_for('admin.problems_management'))
+        
+        try:
+            added_count = 0
+            for problem_id in range(start_id, end_id + 1):
+                problem_info = LadderProblem.get_problem_info_from_solved_ac(str(problem_id))
+                if problem_info:
+                    added_count += 1
+            
+            flash(f'Se agregaron {added_count} problemas correctamente.', 'success')
+        
+        except Exception as e:
+            flash(f'Error al agregar el rango de problemas: {str(e)}', 'danger')
+    
+    return redirect(url_for('admin.problems_management'))
+
+@admin.route('/problems/list')
+@login_required
+def list_all_problems():
+    # Verificar si el usuario es admin
+    if current_user.id != 1:
+        flash('Acceso denegado. Solo administradores pueden acceder a esta sección.', 'danger')
+        return redirect(url_for('main.index'))
+    
+    # Parámetros de paginación
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    offset = (page - 1) * per_page
+    
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        # Obtener el total de problemas para la paginación
+        cursor.execute("SELECT COUNT(*) FROM problems")
+        total = cursor.fetchone()[0]
+        
+        # Obtener los problemas para la página actual
+        cursor.execute("""
+            SELECT problem_id, problem_title, tier, tags, solved_count, level, accepted_user_count, average_tries
+            FROM problems
+            ORDER BY problem_id::integer
+            LIMIT %s OFFSET %s
+        """, (per_page, offset))
+        
+        problems = [
+            {
+                'id': row[0],
+                'title': row[1],
+                'tier': row[2],
+                'tags': row[3],
+                'solved_count': row[4],
+                'level': row[5],
+                'accepted_user_count': row[6],
+                'average_tries': row[7]
+            }
+            for row in cursor.fetchall()
+        ]
+        
+        cursor.close()
+        conn.close()
+        
+        # Calcular información de paginación
+        total_pages = (total + per_page - 1) // per_page
+        
+    except Exception as e:
+        problems = []
+        total_pages = 1
+        flash(f'Error al obtener la lista de problemas: {str(e)}', 'danger')
+    
+    return render_template('admin/problem_list.html', 
+                          problems=problems,
+                          page=page,
+                          total_pages=total_pages) 

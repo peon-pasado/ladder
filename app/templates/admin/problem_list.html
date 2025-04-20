@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Lista de Problemas{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Lista de Problemas</h2>
+    
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin.admin_index') }}">Panel Admin</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('admin.problems_management') }}">Gestión de Problemas</a></li>
+            <li class="breadcrumb-item active">Lista de Problemas</li>
+        </ol>
+    </nav>
+    
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="m-0">Todos los Problemas (Página {{ page }} de {{ total_pages }})</h5>
+            <a href="{{ url_for('admin.problems_management') }}" class="btn btn-light btn-sm">
+                <i class="fas fa-arrow-left"></i> Volver a Gestión
+            </a>
+        </div>
+        <div class="card-body">
+            {% if problems %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Nivel</th>
+                            <th>Resueltos</th>
+                            <th>Usuarios</th>
+                            <th>Intentos</th>
+                            <th>Etiquetas</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for problem in problems %}
+                        <tr>
+                            <td>{{ problem.id }}</td>
+                            <td>{{ problem.title }}</td>
+                            <td>{{ problem.tier }}</td>
+                            <td>{{ problem.solved_count }}</td>
+                            <td>{{ problem.accepted_user_count }}</td>
+                            <td>{{ '%.2f'|format(problem.average_tries|float) }}</td>
+                            <td>
+                                {% if problem.tags %}
+                                    {% for tag in problem.tags.split(',')[:3] %}
+                                        <span class="badge bg-secondary">{{ tag }}</span>
+                                    {% endfor %}
+                                    {% if problem.tags.split(',')|length > 3 %}
+                                        <span class="badge bg-info">+{{ problem.tags.split(',')|length - 3 }}</span>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Paginación -->
+            <nav aria-label="Navegación de páginas">
+                <ul class="pagination justify-content-center">
+                    {% if page > 1 %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('admin.list_all_problems', page=page-1) }}">Anterior</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">Anterior</span>
+                    </li>
+                    {% endif %}
+                    
+                    {% set start_page = [page-2, 1]|max %}
+                    {% set end_page = [start_page+4, total_pages]|min %}
+                    {% set start_page = [end_page-4, 1]|max %}
+                    
+                    {% for p in range(start_page, end_page+1) %}
+                    <li class="page-item {% if p == page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('admin.list_all_problems', page=p) }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    
+                    {% if page < total_pages %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('admin.list_all_problems', page=page+1) }}">Siguiente</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">Siguiente</span>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% else %}
+            <div class="alert alert-warning">
+                <p>No hay problemas en la base de datos.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header bg-info text-white">
+            <h5 class="m-0">Instrucciones de Gestión de Problemas</h5>
+        </div>
+        <div class="card-body">
+            <ul>
+                <li>Los problemas en esta base de datos son utilizados por el sistema de ladder.</li>
+                <li>Cada problema tiene un nivel de dificultad (tier) y etiquetas que ayudan en la recomendación.</li>
+                <li>Para añadir nuevos problemas, vuelve a la sección de <a href="{{ url_for('admin.problems_management') }}">gestión de problemas</a>.</li>
+                <li>Los datos de los problemas se obtienen automáticamente de la API de Solved.ac.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %} 

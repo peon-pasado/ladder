@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Gestión de Problemas{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Gestión de Problemas</h2>
+    
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin.admin_index') }}">Panel Admin</a></li>
+            <li class="breadcrumb-item active">Gestión de Problemas</li>
+        </ol>
+    </nav>
+    
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="m-0">Opciones de Gestión de Problemas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <a href="{{ url_for('admin.list_all_problems') }}" class="btn btn-outline-primary btn-lg w-100">
+                                <i class="fas fa-list"></i> Ver Todos los Problemas
+                            </a>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <a href="{{ url_for('admin.admin_index') }}" class="btn btn-outline-secondary btn-lg w-100">
+                                <i class="fas fa-arrow-left"></i> Volver al Panel Admin
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="m-0">Agregar Problema Individual</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('admin.add_single_problem') }}">
+                        {{ single_form.csrf_token }}
+                        <div class="mb-3">
+                            <label for="problem_id" class="form-label">ID del Problema</label>
+                            {{ single_form.problem_id(class="form-control", placeholder="Ej: 1000") }}
+                            {% if single_form.problem_id.errors %}
+                            <div class="text-danger">
+                                {% for error in single_form.problem_id.errors %}
+                                <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="d-grid">
+                            {{ single_form.submit(class="btn btn-primary") }}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="m-0">Agregar Rango de Problemas</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('admin.add_problem_range') }}">
+                        {{ range_form.csrf_token }}
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="start_id" class="form-label">ID Inicio</label>
+                                {{ range_form.start_id(class="form-control", placeholder="Ej: 1000") }}
+                                {% if range_form.start_id.errors %}
+                                <div class="text-danger">
+                                    {% for error in range_form.start_id.errors %}
+                                    <small>{{ error }}</small>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="end_id" class="form-label">ID Fin</label>
+                                {{ range_form.end_id(class="form-control", placeholder="Ej: 1010") }}
+                                {% if range_form.end_id.errors %}
+                                <div class="text-danger">
+                                    {% for error in range_form.end_id.errors %}
+                                    <small>{{ error }}</small>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid">
+                            {{ range_form.submit(class="btn btn-success") }}
+                        </div>
+                        
+                        <div class="alert alert-warning mt-3" role="alert">
+                            <small>Nota: El rango no debe superar los 100 problemas para evitar sobrecargar la API.</small>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <h5 class="m-0">Problemas Recientes ({{ total_problems }} en total)</h5>
+        </div>
+        <div class="card-body">
+            {% if recent_problems %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Nivel</th>
+                            <th>Etiquetas</th>
+                            <th>Resueltos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for problem in recent_problems %}
+                        <tr>
+                            <td>{{ problem.id }}</td>
+                            <td>{{ problem.title }}</td>
+                            <td>{{ problem.tier }}</td>
+                            <td>
+                                {% if problem.tags %}
+                                    {% for tag in problem.tags.split(',') %}
+                                        <span class="badge bg-secondary">{{ tag }}</span>
+                                    {% endfor %}
+                                {% endif %}
+                            </td>
+                            <td>{{ problem.solved_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-grid">
+                <a href="{{ url_for('admin.list_all_problems') }}" class="btn btn-outline-dark">Ver Todos los Problemas</a>
+            </div>
+            {% else %}
+            <p>No hay problemas en la base de datos.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %} 
