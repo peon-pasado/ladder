@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, render_template_string
 from flask_login import login_required, current_user
-from flask_wtf import FlaskForm
+from flask_wtf import FlaskForm, CSRFProtect
+from flask_wtf.csrf import generate_csrf
 from wtforms import StringField, TextAreaField, SubmitField, IntegerField
 from wtforms.validators import DataRequired, Email, NumberRange
 from app.models.user import User
@@ -390,7 +391,7 @@ def init_problems_table():
                 <p>Este proceso creará la tabla necesaria para almacenar los problemas en la base de datos.</p>
                 
                 <form method="POST" onsubmit="return confirm('¿Estás seguro que deseas inicializar la tabla de problemas?');">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary">Inicializar Tabla de Problemas</button>
                     </div>
@@ -403,7 +404,7 @@ def init_problems_table():
         </div>
     </div>
     {% endblock %}
-    ''')
+    ''', csrf_token=generate_csrf())
 
 # Modificar la ruta de gestionar_problemas para verificar y notificar si la tabla no existe
 @admin.route('/gestionar_problemas')
@@ -415,6 +416,7 @@ def gestionar_problemas():
         return redirect(url_for('main.index'))
     
     # Verificar si la tabla problems existe
+    table_exists = False
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
@@ -430,10 +432,6 @@ def gestionar_problemas():
         table_exists = cursor.fetchone()[0]
         cursor.close()
         conn.close()
-        
-        if not table_exists:
-            flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
-            return redirect(url_for('admin.init_problems_table'))
             
     except Exception as e:
         logger.error(f"Error al verificar la tabla problems: {str(e)}")
@@ -449,6 +447,16 @@ def gestionar_problemas():
     <div class="container mt-4">
         <h2>Gestión de Problemas (Versión Simplificada)</h2>
         
+        {% if not ''' + str(table_exists) + ''' %}
+        <div class="alert alert-warning">
+            <p><strong>Atención:</strong> La tabla "problems" no existe en la base de datos.</p>
+            <p>Debe inicializarla antes de poder gestionar problemas.</p>
+            <a href="{{ url_for('admin.init_problems_simple') }}" class="btn btn-primary">
+                Inicializar Tabla Problems
+            </a>
+        </div>
+        {% endif %}
+        
         <div class="row mb-4">
             <div class="col-md-6">
                 <div class="card">
@@ -457,7 +465,7 @@ def gestionar_problemas():
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ url_for('admin.add_single_problem') }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                             <div class="mb-3">
                                 <label for="problem_id" class="form-label">ID del Problema</label>
                                 <input type="number" class="form-control" id="problem_id" name="problem_id" min="1000" required placeholder="Ej: 1000">
@@ -477,7 +485,7 @@ def gestionar_problemas():
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ url_for('admin.add_problem_range') }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="start_id" class="form-label">ID Inicio</label>
@@ -500,10 +508,16 @@ def gestionar_problemas():
         <div class="d-grid gap-2">
             <a href="{{ url_for('admin.lista_problemas') }}" class="btn btn-outline-primary">Ver Todos los Problemas</a>
             <a href="{{ url_for('admin.admin_index') }}" class="btn btn-outline-secondary">Volver al Panel Admin</a>
+            
+            <div class="mt-4">
+                <a href="{{ url_for('admin.diagnostico_csrf') }}" class="btn btn-outline-info btn-sm">
+                    Diagnosticar CSRF
+                </a>
+            </div>
         </div>
     </div>
     {% endblock %}
-    ''')
+    ''', csrf_token=generate_csrf())
 
 @admin.route('/problems/add-single', methods=['POST'])
 @login_required
@@ -890,4 +904,121 @@ def lista_problemas():
     problems=problems,
     page=page,
     total_pages=total_pages,
-    total=total) 
+    total=total,
+    csrf_token=generate_csrf())
+
+@admin.route('/diagnostico-csrf')
+@login_required
+def diagnostico_csrf():
+    """Ruta de diagnóstico para verificar el funcionamiento de CSRF"""
+    if current_user.id != 1:
+        flash('Acceso denegado.', 'danger')
+        return redirect(url_for('admin.admin_index'))
+    
+    csrf_token = generate_csrf()
+    
+    return render_template_string('''
+    {% extends "base.html" %}
+    
+    {% block title %}Diagnóstico CSRF{% endblock %}
+    
+    {% block content %}
+    <div class="container mt-4">
+        <h2>Diagnóstico de CSRF</h2>
+        
+        <div class="alert alert-info">
+            <p>Esta página es para diagnosticar problemas con los tokens CSRF.</p>
+            <p>Token generado: <code>{{ csrf_token }}</code></p>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">Formulario de prueba</div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.procesar_diagnostico') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                    <div class="mb-3">
+                        <label>Campo de prueba</label>
+                        <input type="text" name="test_field" class="form-control">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Enviar</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="mt-3">
+            <a href="{{ url_for('admin.admin_index') }}" class="btn btn-secondary">Volver</a>
+        </div>
+    </div>
+    {% endblock %}
+    ''', csrf_token=csrf_token)
+
+@admin.route('/procesar-diagnostico', methods=['POST'])
+@login_required
+def procesar_diagnostico():
+    """Procesa el formulario de diagnóstico"""
+    if current_user.id != 1:
+        flash('Acceso denegado.', 'danger')
+        return redirect(url_for('admin.admin_index'))
+    
+    test_field = request.form.get('test_field', '')
+    csrf_token = request.form.get('csrf_token', '')
+    
+    flash(f'Formulario recibido. Campo: {test_field}, CSRF Token: {csrf_token[:10]}...', 'success')
+    return redirect(url_for('admin.diagnostico_csrf'))
+
+@admin.route('/init-problems-simple')
+@login_required
+def init_problems_simple():
+    """Versión simplificada para inicializar la tabla de problemas"""
+    if current_user.id != 1:
+        flash('Acceso denegado.', 'danger')
+        return redirect(url_for('admin.admin_index'))
+    
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        # Verificar si la tabla problems existe
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'problems'
+        )
+        """)
+        
+        table_exists = cursor.fetchone()[0]
+        
+        if not table_exists:
+            logger.info("Creando tabla 'problems'...")
+            
+            # Crear la tabla problems si no existe
+            cursor.execute("""
+            CREATE TABLE problems (
+                id SERIAL PRIMARY KEY,
+                problem_id TEXT UNIQUE NOT NULL,
+                problem_title TEXT NOT NULL,
+                tier INTEGER DEFAULT NULL,
+                tags TEXT DEFAULT NULL,
+                solved_count INTEGER DEFAULT 0,
+                level INTEGER DEFAULT NULL,
+                accepted_user_count INTEGER DEFAULT 0,
+                average_tries REAL DEFAULT 0.0
+            )
+            """)
+            
+            conn.commit()
+            flash('La tabla "problems" ha sido creada correctamente.', 'success')
+            logger.info("Tabla 'problems' creada exitosamente")
+        else:
+            flash('La tabla "problems" ya existe en la base de datos.', 'info')
+            logger.info("La tabla 'problems' ya existe")
+        
+        cursor.close()
+        conn.close()
+        
+    except Exception as e:
+        logger.error(f"Error al inicializar la tabla problems: {str(e)}")
+        flash(f'Error al inicializar la tabla: {str(e)}', 'danger')
+    
+    return redirect(url_for('admin.gestionar_problemas')) 
