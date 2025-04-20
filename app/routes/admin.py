@@ -879,10 +879,16 @@ def lista_problemas():
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
         logger.debug(f"Mostrando {len(problems)} problemas, página {page}/{total_pages}")
         
+        # Calcular rango de páginas para la paginación
+        page_start = max(1, page - 2)
+        page_end = min(total_pages + 1, page + 3)
+        pagination_range = list(range(page_start, page_end))
+        
     except Exception as e:
         problems = []
         total_pages = 1
         total = 0
+        pagination_range = [1]
         logger.error(f"Error al obtener la lista de problemas: {str(e)}")
         flash(f'Error al obtener la lista de problemas: {str(e)}', 'danger')
     
@@ -961,7 +967,7 @@ def lista_problemas():
                         </li>
                         {% endif %}
                         
-                        {% for p in range(max(1, page-2), min(total_pages+1, page+3)) %}
+                        {% for p in pagination_range %}
                         <li class="page-item {% if p == page %}active{% endif %}">
                             <a class="page-link" href="{{ url_for('admin.lista_problemas', page=p) }}">{{ p }}</a>
                         </li>
@@ -993,6 +999,7 @@ def lista_problemas():
     page=page,
     total_pages=total_pages,
     total=total,
+    pagination_range=pagination_range,
     csrf_token=generate_csrf())
 
 @admin.route('/diagnostico-csrf')
