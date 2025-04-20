@@ -305,7 +305,107 @@ def debug_problems():
                           recent_problems=[], 
                           total_problems=0)
 
-# Ruta directa para gestionar problemas (sin template intermedio)
+# Función para inicializar la tabla de problemas
+def initialize_problems_table():
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        # Verificar si la tabla problems existe
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'problems'
+        )
+        """)
+        
+        table_exists = cursor.fetchone()[0]
+        
+        if not table_exists:
+            logger.info("Creando tabla 'problems'...")
+            
+            # Crear la tabla problems si no existe
+            cursor.execute("""
+            CREATE TABLE problems (
+                id SERIAL PRIMARY KEY,
+                problem_id TEXT UNIQUE NOT NULL,
+                problem_title TEXT NOT NULL,
+                tier INTEGER DEFAULT NULL,
+                tags TEXT DEFAULT NULL,
+                solved_count INTEGER DEFAULT 0,
+                level INTEGER DEFAULT NULL,
+                accepted_user_count INTEGER DEFAULT 0,
+                average_tries REAL DEFAULT 0.0
+            )
+            """)
+            
+            conn.commit()
+            logger.info("Tabla 'problems' creada exitosamente")
+        else:
+            logger.info("La tabla 'problems' ya existe")
+        
+        cursor.close()
+        conn.close()
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error al inicializar la tabla problems: {str(e)}")
+        return False
+
+@admin.route('/problems/init', methods=['GET', 'POST'])
+@login_required
+def init_problems_table():
+    # Verificar si el usuario es admin
+    if current_user.id != 1:
+        flash('Acceso denegado.', 'danger')
+        return redirect(url_for('admin.admin_index'))
+    
+    if request.method == 'POST':
+        if initialize_problems_table():
+            flash('La tabla "problems" ha sido inicializada correctamente.', 'success')
+        else:
+            flash('Error al inicializar la tabla "problems".', 'danger')
+        return redirect(url_for('admin.gestionar_problemas'))
+    
+    return render_template_string('''
+    {% extends "base.html" %}
+    
+    {% block title %}Inicializar Tabla de Problemas{% endblock %}
+    
+    {% block content %}
+    <div class="container mt-4">
+        <h2>Inicializar Tabla de Problemas</h2>
+        
+        <div class="alert alert-warning">
+            <p><strong>Atención:</strong> Se requiere inicializar la tabla de problemas antes de usar las funciones de gestión.</p>
+            <p>El error "relation 'problems' does not exist" indica que esta tabla no existe en la base de datos.</p>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="m-0">Inicialización de la Base de Datos</h5>
+            </div>
+            <div class="card-body">
+                <p>Este proceso creará la tabla necesaria para almacenar los problemas en la base de datos.</p>
+                
+                <form method="POST" onsubmit="return confirm('¿Estás seguro que deseas inicializar la tabla de problemas?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Inicializar Tabla de Problemas</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="mt-3">
+            <a href="{{ url_for('admin.admin_index') }}" class="btn btn-secondary">Volver al Panel de Administración</a>
+        </div>
+    </div>
+    {% endblock %}
+    ''')
+
+# Modificar la ruta de gestionar_problemas para verificar y notificar si la tabla no existe
 @admin.route('/gestionar_problemas')
 @login_required
 def gestionar_problemas():
@@ -313,6 +413,31 @@ def gestionar_problemas():
     if current_user.id != 1:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
+    
+    # Verificar si la tabla problems existe
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'problems'
+        )
+        """)
+        
+        table_exists = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        
+        if not table_exists:
+            flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
+            return redirect(url_for('admin.init_problems_table'))
+            
+    except Exception as e:
+        logger.error(f"Error al verificar la tabla problems: {str(e)}")
+        flash(f'Error al verificar la base de datos: {str(e)}', 'danger')
     
     # Renderizar un template simplificado directamente
     return render_template_string('''
@@ -388,6 +513,32 @@ def add_single_problem():
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
+    # Verificar si la tabla problems existe
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'problems'
+        )
+        """)
+        
+        table_exists = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        
+        if not table_exists:
+            flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
+            return redirect(url_for('admin.init_problems_table'))
+            
+    except Exception as e:
+        logger.error(f"Error al verificar la tabla problems: {str(e)}")
+        flash(f'Error al verificar la base de datos: {str(e)}', 'danger')
+        return redirect(url_for('admin.gestionar_problemas'))
+    
     # Log para depuración
     logger.debug("Procesando formulario de problema individual")
     
@@ -422,6 +573,32 @@ def add_problem_range():
     if current_user.id != 1:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
+    
+    # Verificar si la tabla problems existe
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'problems'
+        )
+        """)
+        
+        table_exists = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        
+        if not table_exists:
+            flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
+            return redirect(url_for('admin.init_problems_table'))
+            
+    except Exception as e:
+        logger.error(f"Error al verificar la tabla problems: {str(e)}")
+        flash(f'Error al verificar la base de datos: {str(e)}', 'danger')
+        return redirect(url_for('admin.gestionar_problemas'))
     
     # Log para depuración
     logger.debug("Procesando formulario de rango de problemas")
@@ -532,6 +709,32 @@ def lista_problemas():
     if current_user.id != 1:
         flash('Acceso denegado. Solo administradores pueden acceder a esta sección.', 'danger')
         return redirect(url_for('main.index'))
+    
+    # Verificar si la tabla problems existe
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'problems'
+        )
+        """)
+        
+        table_exists = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        
+        if not table_exists:
+            flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
+            return redirect(url_for('admin.init_problems_table'))
+            
+    except Exception as e:
+        logger.error(f"Error al verificar la tabla problems: {str(e)}")
+        flash(f'Error al verificar la base de datos: {str(e)}', 'danger')
+        return redirect(url_for('admin.gestionar_problemas'))
     
     # Log para depuración
     logger.debug("Accediendo a la lista simplificada de problemas")
