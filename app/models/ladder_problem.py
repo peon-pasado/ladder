@@ -158,8 +158,34 @@ class LadderProblem:
         
         problem_data = cursor.fetchone()
         
-        # Si el estado nuevo es 'current', actualizamos revealed_at con la hora actual
-        if new_state == 'current':
+        if not problem_data:
+            conn.close()
+            return False
+        
+        baekjoon_username = problem_data['baekjoon_username']
+        
+        # Si el estado nuevo es 'solved', asegurarnos de que solo haya un problema 'current'
+        if new_state == 'solved':
+            # Primero actualizar este problema a 'solved'
+            cursor.execute(
+                "UPDATE ladder_problems SET state = ? WHERE id = ?",
+                (new_state, problem_id)
+            )
+            
+            # El sistema de recomendación se encargará de añadir el siguiente problema como 'current'
+        elif new_state == 'current':
+            # Si vamos a marcar un problema como 'current', primero asegurarnos
+            # de que no haya otros problemas 'current' para este usuario
+            cursor.execute(
+                """
+                UPDATE ladder_problems 
+                SET state = 'hidden' 
+                WHERE baekjoon_username = ? AND state = 'current' AND id != ?
+                """,
+                (baekjoon_username, problem_id)
+            )
+            
+            # Ahora actualizar el revealed_at con la hora actual
             from datetime import datetime, timedelta
             # Usar una hora 6 horas en el futuro para dar más tiempo
             future_time = datetime.now() + timedelta(hours=6)
@@ -170,7 +196,7 @@ class LadderProblem:
                 (new_state, current_time, problem_id)
             )
         else:
-            # Actualizamos solo el estado
+            # Para otros estados, simplemente actualizar
             cursor.execute(
                 "UPDATE ladder_problems SET state = ? WHERE id = ?",
                 (new_state, problem_id)
@@ -187,7 +213,7 @@ class LadderProblem:
         
         conn.commit()
         conn.close()
-        return cursor.rowcount > 0
+        return True
     
     @staticmethod
     def save_solved_problem(user_id, problem_id, problem_title, position):
@@ -211,6 +237,19 @@ class LadderProblem:
         # Obtener el nivel del problema y el rating actual del usuario
         conn = sqlite3.connect('app.db')
         cursor = conn.cursor()
+        
+        # Actualizar el estado de este problema a 'solved' en ladder_problems
+        cursor.execute(
+            """
+            UPDATE ladder_problems 
+            SET state = 'solved' 
+            WHERE problem_id = ? AND baekjoon_username IN (
+                SELECT baekjoon_username FROM baekjoon_accounts WHERE user_id = ?
+            )
+            """,
+            (problem_id, user_id)
+        )
+        conn.commit()
         
         # Obtener el nivel del problema
         cursor.execute(

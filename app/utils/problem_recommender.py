@@ -88,21 +88,38 @@ class ProblemRecommender:
         Returns:
             ID del problema revelado o None si no hay más problemas
         """
-        # Obtener la próxima posición para el ladder
+        # Obtener el problema actual para determinar la siguiente posición
         conn = sqlite3.connect('app.db')
         cursor = conn.cursor()
         
+        # Encontrar el problema actual (state = 'current') para este usuario
         cursor.execute(
             """
-            SELECT MAX(position) 
+            SELECT position
             FROM ladder_problems
-            WHERE baekjoon_username = ?
+            WHERE baekjoon_username = ? AND state = 'current'
             """,
             (baekjoon_username,)
         )
         
-        result = cursor.fetchone()
-        next_position = (result[0] or 0) + 1
+        current_result = cursor.fetchone()
+        
+        if current_result:
+            # Si hay un problema actual, la siguiente posición será la actual + 1
+            next_position = current_result[0] + 1
+        else:
+            # Si no hay problema actual, verificar la posición máxima
+            cursor.execute(
+                """
+                SELECT MAX(position) 
+                FROM ladder_problems
+                WHERE baekjoon_username = ?
+                """,
+                (baekjoon_username,)
+            )
+            
+            result = cursor.fetchone()
+            next_position = (result[0] or 0) + 1
         
         # Obtener el rating actual del usuario
         cursor.execute("SELECT rating FROM users WHERE id = ?", (user_id,))
