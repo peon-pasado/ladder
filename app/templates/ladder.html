@@ -60,7 +60,7 @@
             <div class="card-body">
                 <div class="ladder-container">
                     {% for row in ladder_rows %}
-                    <div class="ladder-row d-flex justify-content-between my-2">
+                    <div class="ladder-row d-flex my-2">
                         {% for problem in row %}
                         <div class="ladder-item">
                             {% if problem.state == 'hidden' %}
@@ -192,10 +192,12 @@
     width: 100%;
     min-width: max-content;
     display: flex;
+    justify-content: flex-start;
     flex-wrap: nowrap;
+    margin-bottom: 10px;
 }
 .ladder-item {
-    flex: 1;
+    flex: 0 0 auto;
     margin: 0.15rem;
     aspect-ratio: 1/1;
     min-width: 110px;

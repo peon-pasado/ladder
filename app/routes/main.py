@@ -125,16 +125,24 @@ def view_ladder(account_id):
             # Esta modificación permite que los problemas reiniciados comiencen sin timestamp
             # hasta que el usuario interactúe con ellos
     
-    # Organizar los problemas en filas para el formato de serpiente
-    ladder_rows = []
-    row_size = 8  # Número de problemas por fila (aumentado de 5 a 8)
+    # Ordenar los problemas por posición para garantizar que se muestren en el orden correcto
+    problems = sorted(problems, key=lambda p: p.position)
     
-    for i in range(0, len(problems), row_size):
-        row = problems[i:i+row_size]
-        # Invertir filas alternadas para el patrón de serpiente
-        if (i // row_size) % 2 == 1:  # Si es una fila impar (0-indexed)
-            row = list(reversed(row))
-        ladder_rows.append(row)
+    # Solo mostrar problemas con estado no-hidden o agregar problemas con estado definido
+    visible_problems = [p for p in problems if p.state != 'hidden' or p.position <= 3]
+    
+    # Organizar los problemas en filas para mostrarlos secuencialmente
+    ladder_rows = []
+    row_size = 8  # Número de problemas por fila
+    
+    # Si hay pocos problemas, mostrarlos todos en una fila
+    if len(visible_problems) <= row_size:
+        ladder_rows.append(visible_problems)
+    else:
+        # Dividir en filas de tamaño uniforme
+        for i in range(0, len(visible_problems), row_size):
+            row = visible_problems[i:i+row_size]
+            ladder_rows.append(row)
     
     # Add a debugging variable to the template
     current_time = datetime.now()
