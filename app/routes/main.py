@@ -207,7 +207,7 @@ def update_problem_state(account_id, problem_id):
                     
                     # Mostrar mensaje con el cambio de rating
                     flash(f'¡Problema resuelto correctamente! Tu rating ha aumentado de {old_rating} a {new_rating} (+{delta_rating})', 'success')
-                    flash('Se ha seleccionado un nuevo problema recomendado según tu rating actual y buchholz. ¡Haz clic en él para comenzar a resolverlo!', 'info')
+                    flash('¡Felicitaciones! Puedes continuar con el siguiente problema cuando estés listo.', 'info')
                 
                 # Ya no necesitamos añadir más problemas aquí, ya que el recomendador añade uno nuevo cada vez
                 # que se resuelve un problema
@@ -368,7 +368,7 @@ def verify_problem_solved(account_id, problem_id):
                 old_rating = new_rating - expected_increase
                 
                 flash(f'¡Problema verificado como resuelto! Tu rating ha aumentado de {old_rating} a {new_rating} (+{expected_increase})', 'success')
-                flash('Se ha seleccionado un nuevo problema recomendado según tu rating actual. ¡Haz clic en él para comenzar a resolverlo!', 'info')
+                flash('¡Felicitaciones! Puedes continuar con el siguiente problema cuando estés listo.', 'info')
             else:
                 flash('No se pudo actualizar el estado del problema', 'danger')
         else:
