@@ -166,7 +166,7 @@ class LadderProblem:
         account_data = cursor.fetchone()
         user_id = account_data[0] if account_data else None
         
-        # Inicializar el primer problema como 'hidden' en lugar de 'current'
+        # Insertar el primer problema como 'current'
         if problems_data and len(problems_data) > 0:
             first_problem = problems_data[0]
             cursor.execute(
@@ -175,9 +175,9 @@ class LadderProblem:
                 (baekjoon_username, position, problem_id, problem_title, state) 
                 VALUES (%s, %s, %s, %s, %s)
                 """,
-                (baekjoon_username, 1, first_problem['id'], first_problem['title'], 'hidden')
+                (baekjoon_username, 1, first_problem['id'], first_problem['title'], 'current')
             )
-            print(f"Inicializando ladder para {baekjoon_username}: añadido problema {first_problem['id']} ({first_problem['title']}) como 'hidden'")
+            print(f"Inicializando ladder para {baekjoon_username}: añadido problema {first_problem['id']} ({first_problem['title']}) como 'current'")
             conn.commit()
         
         conn.close()
