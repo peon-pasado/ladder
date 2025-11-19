@@ -8,6 +8,14 @@ from app.utils.problem_recommender import ProblemRecommender
 import psycopg2
 from app.config import DB_TYPE, DATABASE_URL
 
+# Función helper para obtener conexión según el tipo de BD
+def get_db_connection():
+    """Retorna una conexión a la base de datos según el tipo configurado"""
+    if DB_TYPE == 'postgresql':
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        return sqlite3.connect('app.db')
+
 class LadderProblem:
     def __init__(self, id, baekjoon_username, position, problem_id, problem_title, state, 
                 tier=None, tags=None, level=None, solved_count=0, accepted_user_count=0, average_tries=0.0, revealed_at=None):
@@ -28,30 +36,35 @@ class LadderProblem:
         self.revealed_at = revealed_at
     
     @staticmethod
-    def get_database_connection():
-        """Obtener una conexión a la base de datos PostgreSQL"""
-        pg_url = DATABASE_URL
-        if 'postgresql:' not in pg_url:
-            pg_url = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
-        return psycopg2.connect(pg_url)
-    
-    @staticmethod
     def get_ladder_problems(baekjoon_username):
         """Obtener todos los problemas del ladder para un nombre de usuario de Baekjoon"""
-        conn = LadderProblem.get_database_connection()
+        conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(
-            """
-            SELECT lp.*, p.tier, p.tags, p.level, p.solved_count, 
-                   p.accepted_user_count, p.average_tries
-            FROM ladder_problems lp
-            LEFT JOIN problems p ON lp.problem_id = p.problem_id
-            WHERE lp.baekjoon_username = %s 
-            ORDER BY lp.position ASC
-            """,
-            (baekjoon_username,)
-        )
+        if DB_TYPE == 'postgresql':
+            cursor.execute(
+                """
+                SELECT lp.*, p.tier, p.tags, p.level, p.solved_count, 
+                       p.accepted_user_count, p.average_tries
+                FROM ladder_problems lp
+                LEFT JOIN problems p ON lp.problem_id = p.problem_id
+                WHERE lp.baekjoon_username = %s 
+                ORDER BY lp.position ASC
+                """,
+                (baekjoon_username,)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT lp.*, p.tier, p.tags, p.level, p.solved_count, 
+                       p.accepted_user_count, p.average_tries
+                FROM ladder_problems lp
+                LEFT JOIN problems p ON lp.problem_id = p.problem_id
+                WHERE lp.baekjoon_username = ? 
+                ORDER BY lp.position ASC
+                """,
+                (baekjoon_username,)
+            )
         
         problems = []
         for row in cursor.fetchall():
@@ -94,19 +107,31 @@ class LadderProblem:
     @staticmethod
     def get_problem_by_id(ladder_problem_id):
         """Obtener un problema específico del ladder por su ID"""
-        conn = LadderProblem.get_database_connection()
+        conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(
-            """
-            SELECT lp.*, p.tier, p.tags, p.level, p.solved_count, 
-                   p.accepted_user_count, p.average_tries
-            FROM ladder_problems lp
-            LEFT JOIN problems p ON lp.problem_id = p.problem_id
-            WHERE lp.id = %s
-            """,
-            (ladder_problem_id,)
-        )
+        if DB_TYPE == 'postgresql':
+            cursor.execute(
+                """
+                SELECT lp.*, p.tier, p.tags, p.level, p.solved_count, 
+                       p.accepted_user_count, p.average_tries
+                FROM ladder_problems lp
+                LEFT JOIN problems p ON lp.problem_id = p.problem_id
+                WHERE lp.id = %s
+                """,
+                (ladder_problem_id,)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT lp.*, p.tier, p.tags, p.level, p.solved_count, 
+                       p.accepted_user_count, p.average_tries
+                FROM ladder_problems lp
+                LEFT JOIN problems p ON lp.problem_id = p.problem_id
+                WHERE lp.id = ?
+                """,
+                (ladder_problem_id,)
+            )
         
         row = cursor.fetchone()
         if not row:
@@ -152,31 +177,45 @@ class LadderProblem:
     @staticmethod
     def initialize_ladder(baekjoon_username, problems_data):
         """Inicializar el ladder con problemas para un nombre de usuario de Baekjoon"""
-        import psycopg2
-        DATABASE_URL = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Primero obtener el user_id del baekjoon_username
-        cursor.execute(
-            "SELECT user_id FROM baekjoon_accounts WHERE baekjoon_username = %s LIMIT 1",
-            (baekjoon_username,)
-        )
+        if DB_TYPE == 'postgresql':
+            cursor.execute(
+                "SELECT user_id FROM baekjoon_accounts WHERE baekjoon_username = %s LIMIT 1",
+                (baekjoon_username,)
+            )
+        else:
+            cursor.execute(
+                "SELECT user_id FROM baekjoon_accounts WHERE baekjoon_username = ? LIMIT 1",
+                (baekjoon_username,)
+            )
         
         account_data = cursor.fetchone()
         user_id = account_data[0] if account_data else None
         
-        # Insertar el primer problema como 'current'
+        # Insertar solo el primer problema como 'current'
         if problems_data and len(problems_data) > 0:
             first_problem = problems_data[0]
-            cursor.execute(
-                """
-                INSERT INTO ladder_problems 
-                (baekjoon_username, position, problem_id, problem_title, state) 
-                VALUES (%s, %s, %s, %s, %s)
-                """,
-                (baekjoon_username, 1, first_problem['id'], first_problem['title'], 'current')
-            )
+            if DB_TYPE == 'postgresql':
+                cursor.execute(
+                    """
+                    INSERT INTO ladder_problems 
+                    (baekjoon_username, position, problem_id, problem_title, state) 
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (baekjoon_username, 1, first_problem['id'], first_problem['title'], 'current')
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO ladder_problems 
+                    (baekjoon_username, position, problem_id, problem_title, state) 
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (baekjoon_username, 1, first_problem['id'], first_problem['title'], 'current')
+                )
             print(f"Inicializando ladder para {baekjoon_username}: añadido problema {first_problem['id']} ({first_problem['title']}) como 'current'")
             conn.commit()
         
@@ -296,15 +335,24 @@ class LadderProblem:
         )
         
         conn.commit()
-        conn.close()
         
-        # Obtener el nivel del problema
+        # Obtener el tier del problema
         cursor.execute(
-            "SELECT level FROM problems WHERE problem_id = ?",
+            "SELECT tier FROM problems WHERE problem_id = ?",
             (problem_id,)
         )
         problem_data = cursor.fetchone()
-        problem_level = problem_data[0] if problem_data and problem_data[0] is not None else 1500
+        
+        # Importar Constants para usar el tier por defecto
+        from app.utils.constants import Constants
+        if problem_data and problem_data[0] is not None:
+            # Asegurarse de que tier es un número
+            try:
+                problem_tier = int(problem_data[0])
+            except (ValueError, TypeError):
+                problem_tier = Constants.rating_to_tier(Constants.DEFAULT_USER_RATING)
+        else:
+            problem_tier = Constants.rating_to_tier(Constants.DEFAULT_USER_RATING)
         
         # Obtener el rating actual del usuario
         cursor.execute(
@@ -312,7 +360,7 @@ class LadderProblem:
             (user_id,)
         )
         user_data = cursor.fetchone()
-        current_rating = user_data[0] if user_data else 1500
+        current_rating = user_data[0] if user_data else Constants.DEFAULT_USER_RATING
         
         # Obtener el nombre de usuario de Baekjoon del usuario para revelar el siguiente problema
         cursor.execute(
@@ -324,7 +372,7 @@ class LadderProblem:
         conn.close()
         
         # Calcular el cambio de rating basado en la fórmula
-        delta_rating = RatingCalculator.calculate_rating_change(current_rating, problem_level)
+        delta_rating = RatingCalculator.calculate_rating_change(current_rating, problem_tier)
         
         # Actualizar el rating del usuario
         User.update_rating(user_id, delta_rating)
@@ -340,17 +388,21 @@ class LadderProblem:
     @staticmethod
     def clear_ladder(baekjoon_username):
         """Eliminar todos los problemas del ladder para un nombre de usuario de Baekjoon"""
-        import psycopg2
-        DATABASE_URL = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
         try:
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = get_db_connection()
             cursor = conn.cursor()
             
             # Eliminar todos los problemas del ladder
-            cursor.execute(
-                "DELETE FROM ladder_problems WHERE baekjoon_username = %s",
-                (baekjoon_username,)
-            )
+            if DB_TYPE == 'postgresql':
+                cursor.execute(
+                    "DELETE FROM ladder_problems WHERE baekjoon_username = %s",
+                    (baekjoon_username,)
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM ladder_problems WHERE baekjoon_username = ?",
+                    (baekjoon_username,)
+                )
             
             deleted_count = cursor.rowcount
             print(f"Se eliminaron {deleted_count} problemas del ladder para el usuario {baekjoon_username}")
@@ -363,45 +415,117 @@ class LadderProblem:
             return False
     
     @staticmethod
-    def get_sample_problems():
-        """Obtener una lista de problemas de ejemplo para inicializar el ladder"""
-        # Obtener problemas de la base de datos
-        import psycopg2
-        DATABASE_URL = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+    def get_available_source_groups():
+        """Obtener lista de grupos de origen disponibles en la base de datos"""
         try:
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = get_db_connection()
             cursor = conn.cursor()
             
-            # Seleccionar UN problema aleatorio
-            cursor.execute(
-                """
-                SELECT problem_id, problem_title 
-                FROM problems 
-                ORDER BY RANDOM()
-                LIMIT 1
-                """
-            )
+            if DB_TYPE == 'postgresql':
+                cursor.execute("""
+                    SELECT DISTINCT source_group 
+                    FROM problems 
+                    WHERE source_group IS NOT NULL
+                    ORDER BY source_group
+                """)
+            else:
+                cursor.execute("""
+                    SELECT DISTINCT source_group 
+                    FROM problems 
+                    WHERE source_group IS NOT NULL
+                    ORDER BY source_group
+                """)
+            
+            groups = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            return groups
+        except Exception as e:
+            print(f"Error al obtener grupos: {str(e)}")
+            return []
+    
+    @staticmethod
+    def get_sample_problems(source_group=None):
+        """
+        Obtener una lista de problemas de ejemplo para inicializar el ladder
+        
+        Args:
+            source_group: Filtrar problemas por grupo de origen (opcional)
+        """
+        # Obtener problemas de la base de datos
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Seleccionar UN problema aleatorio para iniciar
+            if source_group:
+                # Filtrar por source_group
+                if DB_TYPE == 'postgresql':
+                    cursor.execute(
+                        """
+                        SELECT problem_id, problem_title 
+                        FROM problems 
+                        WHERE source_group = %s
+                        ORDER BY RANDOM()
+                        LIMIT 1
+                        """,
+                        (source_group,)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT problem_id, problem_title 
+                        FROM problems 
+                        WHERE source_group = ?
+                        ORDER BY RANDOM()
+                        LIMIT 1
+                        """,
+                        (source_group,)
+                    )
+            else:
+                # Sin filtro - tomar de todos los problemas
+                if DB_TYPE == 'postgresql':
+                    cursor.execute(
+                        """
+                        SELECT problem_id, problem_title 
+                        FROM problems 
+                        ORDER BY RANDOM()
+                        LIMIT 1
+                        """
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT problem_id, problem_title 
+                        FROM problems 
+                        ORDER BY RANDOM()
+                        LIMIT 1
+                        """
+                    )
             
             problem = cursor.fetchone()
             
-            # Si encontramos un problema, devolverlo como único elemento de la lista
+            # Si encontramos un problema, devolverlo como único elemento
             if problem:
                 sample_problems = [{
                     "id": problem[0],
                     "title": problem[1]
                 }]
-                print(f"Se seleccionó el problema aleatorio {problem[0]}: {problem[1]}")
+                print(f"Se seleccionó el problema inicial {problem[0]}: {problem[1]}")
             else:
-                # Si no hay problemas, seleccionar un problema específico
-                sample_problems = [{"id": "21065", "title": "Friendship Circles"}]
-                print("No se encontraron problemas en la BD, usando el problema predeterminado 21065")
+                # Si no hay problemas en la BD, usar uno por defecto
+                sample_problems = [
+                    {"id": "1000", "title": "A+B"},
+                ]
+                print("No se encontraron problemas en la BD, usando problema predeterminado")
             
             conn.close()
             return sample_problems
         except Exception as e:
             print(f"Error al obtener problema de muestra: {str(e)}")
             # Problema de respaldo en caso de error
-            return [{"id": "21065", "title": "Friendship Circles"}]
+            return [
+                {"id": "1000", "title": "A+B"},
+            ]
     
     @staticmethod
     def get_additional_problems(count):

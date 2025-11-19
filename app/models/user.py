@@ -4,14 +4,16 @@ import os
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.config import DATABASE_URL, DB_TYPE
 from app.db import Database
+from app.utils.constants import Constants
 
 class User(UserMixin):
-    def __init__(self, id, username, email, password_hash, rating=1500):
+    def __init__(self, id, username, email, password_hash, rating=None, is_admin=False):
         self.id = id
         self.username = username
         self.email = email
         self.password_hash = password_hash
-        self.rating = rating
+        self.rating = rating if rating is not None else Constants.DEFAULT_USER_RATING
+        self.is_admin = bool(is_admin)
     
     @staticmethod
     def get(user_id):
@@ -20,11 +22,16 @@ class User(UserMixin):
         
         if user_data:
             # Check if 'rating' column exists in the result
-            rating = 1500
+            rating = Constants.DEFAULT_USER_RATING
+            is_admin = False
             try:
                 rating = user_data['rating']
             except (IndexError, KeyError):
-                # If rating column doesn't exist, use default
+                pass
+            
+            try:
+                is_admin = user_data['is_admin']
+            except (IndexError, KeyError):
                 pass
                 
             return User(
@@ -32,7 +39,8 @@ class User(UserMixin):
                 username=user_data['username'],
                 email=user_data['email'],
                 password_hash=user_data['password_hash'],
-                rating=rating
+                rating=rating,
+                is_admin=is_admin
             )
         return None
     
@@ -43,11 +51,16 @@ class User(UserMixin):
         
         if user_data:
             # Check if 'rating' column exists in the result
-            rating = 1500
+            rating = Constants.DEFAULT_USER_RATING
+            is_admin = False
             try:
                 rating = user_data['rating']
             except (IndexError, KeyError):
-                # If rating column doesn't exist, use default
+                pass
+            
+            try:
+                is_admin = user_data['is_admin']
+            except (IndexError, KeyError):
                 pass
                 
             return User(
@@ -55,7 +68,8 @@ class User(UserMixin):
                 username=user_data['username'],
                 email=user_data['email'],
                 password_hash=user_data['password_hash'],
-                rating=rating
+                rating=rating,
+                is_admin=is_admin
             )
         return None
     
@@ -73,7 +87,7 @@ class User(UserMixin):
         
         result = Database.execute_query(
             query,
-            (username, email, password_hash, 1500),
+            (username, email, password_hash, Constants.DEFAULT_USER_RATING),
             commit=True
         )
         
@@ -105,21 +119,29 @@ class User(UserMixin):
         rating_query = "SELECT rating FROM users WHERE id = %s" if DB_TYPE == 'postgresql' else "SELECT rating FROM users WHERE id = ?"
         current_rating_data = Database.execute_query(rating_query, (user_id,), fetchone=True)
         
+        print(f"[DEBUG User.update_rating] user_id={user_id}, current_rating_data={current_rating_data}")
+        
         if not current_rating_data:
+            print(f"[DEBUG User.update_rating] No rating data found for user {user_id}")
             return None
             
         current_rating = current_rating_data['rating']
         
         # Calcular el nuevo rating (nunca menor que 0)
-        new_rating = max(0, current_rating + delta_rating)
+        from app.utils.constants import Constants
+        new_rating = max(Constants.MIN_USER_RATING, current_rating + delta_rating)
+        
+        print(f"[DEBUG User.update_rating] current_rating={current_rating}, delta_rating={delta_rating}, new_rating={new_rating}")
         
         # Actualizar el rating en la base de datos
         update_query = "UPDATE users SET rating = %s WHERE id = %s" if DB_TYPE == 'postgresql' else "UPDATE users SET rating = ? WHERE id = ?"
-        Database.execute_query(
+        result = Database.execute_query(
             update_query, 
             (new_rating, user_id),
             commit=True
         )
+        
+        print(f"[DEBUG User.update_rating] Update result: {result}")
         
         return new_rating
     

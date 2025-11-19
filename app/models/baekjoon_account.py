@@ -15,21 +15,17 @@ class BaekjoonAccount:
     
     @staticmethod
     def get_accounts_by_user_id(user_id):
-        # Usar PostgreSQL en lugar de SQLite
-        pg_url = DATABASE_URL
-        if 'postgresql:' not in pg_url:
-            pg_url = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+        from app.db import Database
         
-        conn = psycopg2.connect(pg_url)
-        cursor = conn.cursor()
+        if DB_TYPE == 'postgresql':
+            query = "SELECT * FROM baekjoon_accounts WHERE user_id = %s ORDER BY added_on DESC"
+        else:
+            query = "SELECT * FROM baekjoon_accounts WHERE user_id = ? ORDER BY added_on DESC"
         
-        cursor.execute(
-            "SELECT * FROM baekjoon_accounts WHERE user_id = %s ORDER BY added_on DESC",
-            (user_id,)
-        )
+        results = Database.execute_query(query, (user_id,))
         
         accounts = []
-        for account_data in cursor.fetchall():
+        for account_data in results:
             accounts.append(BaekjoonAccount(
                 id=account_data[0],          # id
                 user_id=account_data[1],     # user_id
@@ -37,32 +33,33 @@ class BaekjoonAccount:
                 added_on=account_data[3]     # added_on
             ))
         
-        conn.close()
         return accounts
     
     @staticmethod
     def add_account(user_id, baekjoon_username):
+        from app.db import Database
+        
         # Primero verificar si la cuenta existe usando la API
         if not BaekjoonAccount.verify_account(baekjoon_username):
             return False, "La cuenta de Baekjoon no existe"
         
         try:
-            # Usar PostgreSQL en lugar de SQLite
-            pg_url = DATABASE_URL
-            if 'postgresql:' not in pg_url:
-                pg_url = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+            if DB_TYPE == 'postgresql':
+                query = "INSERT INTO baekjoon_accounts (user_id, baekjoon_username, added_on) VALUES (%s, %s, %s) RETURNING id"
+            else:
+                query = "INSERT INTO baekjoon_accounts (user_id, baekjoon_username, added_on) VALUES (?, ?, ?)"
             
-            conn = psycopg2.connect(pg_url)
-            cursor = conn.cursor()
-            
-            cursor.execute(
-                "INSERT INTO baekjoon_accounts (user_id, baekjoon_username, added_on) VALUES (%s, %s, %s) RETURNING id",
-                (user_id, baekjoon_username, datetime.now())
+            result = Database.execute_query(
+                query,
+                (user_id, baekjoon_username, datetime.now()),
+                commit=True
             )
             
-            new_id = cursor.fetchone()[0]
-            conn.commit()
-            conn.close()
+            if DB_TYPE == 'postgresql' and result:
+                new_id = result[0][0]
+            else:
+                # Para SQLite, obtener el último ID insertado
+                new_id = Database.execute_query("SELECT last_insert_rowid()")[0][0]
             
             return True, new_id
         except Exception as e:
@@ -110,24 +107,15 @@ class BaekjoonAccount:
     @staticmethod
     def delete_account(account_id, user_id):
         """Eliminar una cuenta de Baekjoon"""
-        # Usar PostgreSQL en lugar de SQLite
-        pg_url = DATABASE_URL
-        if 'postgresql:' not in pg_url:
-            pg_url = "postgresql://ladder_db_user:6FCOPInpMsKIazgN7WbdXd1dzsUwZVmv@dpg-d01m3rruibrs73aurmt0-a.virginia-postgres.render.com/ladder_db"
+        from app.db import Database
         
-        conn = psycopg2.connect(pg_url)
-        cursor = conn.cursor()
+        if DB_TYPE == 'postgresql':
+            query = "DELETE FROM baekjoon_accounts WHERE id = %s AND user_id = %s"
+        else:
+            query = "DELETE FROM baekjoon_accounts WHERE id = ? AND user_id = ?"
         
-        cursor.execute(
-            "DELETE FROM baekjoon_accounts WHERE id = %s AND user_id = %s",
-            (account_id, user_id)
-        )
-        
-        deleted = cursor.rowcount > 0
-        conn.commit()
-        conn.close()
-        
-        return deleted 
+        Database.execute_query(query, (account_id, user_id), commit=True)
+        return True 
         
     @staticmethod
     def check_problem_solved(username, problem_id, start_time=None, end_time=None):
@@ -146,21 +134,34 @@ class BaekjoonAccount:
             tuple: (True/False, mensaje)
         """
         try:
-            # Primero verificamos que la cuenta existe
-            if not BaekjoonAccount.verify_account(username):
-                return False, "La cuenta de Baekjoon no existe"
+            print(f"[DEBUG check_problem_solved] Verificando: username={username}, problem_id={problem_id}")
             
             # Usamos la API de solved.ac para verificar el problema resuelto
+            # No verificamos primero si la cuenta existe porque si está en nuestra DB, asumimos que es válida
             api_url = f"https://solved.ac/api/v3/search/problem?query=solved_by:{username}+id:{problem_id}"
-            response = requests.get(api_url)
+            
+            print(f"[DEBUG check_problem_solved] Llamando a API: {api_url}")
+            
+            response = requests.get(api_url, timeout=10)
+            
+            print(f"[DEBUG check_problem_solved] Response status: {response.status_code}")
+            
+            if response.status_code == 404:
+                # 404 puede significar que la cuenta no existe o que no hay resultados
+                # Intentamos verificar si la cuenta existe
+                if not BaekjoonAccount.verify_account(username):
+                    return False, f"La cuenta de Baekjoon '{username}' no existe o no es accesible"
+                return False, f"El usuario {username} no ha resuelto el problema {problem_id}"
             
             if response.status_code != 200:
-                return False, f"Error al consultar la API: {response.status_code}"
+                return False, f"Error al consultar la API de solved.ac (código {response.status_code}). Intenta de nuevo más tarde."
             
             data = response.json()
             
+            print(f"[DEBUG check_problem_solved] API response count: {data.get('count', 0)}")
+            
             # Verificamos si hay resultados
-            if data['count'] > 0:
+            if data.get('count', 0) > 0:
                 # La API actual no proporciona la fecha de resolución, así que no podemos
                 # verificar si fue resuelto en el intervalo de tiempo especificado
                 if start_time and end_time:
@@ -169,5 +170,10 @@ class BaekjoonAccount:
             else:
                 return False, f"El usuario {username} no ha resuelto el problema {problem_id}"
             
+        except requests.exceptions.Timeout:
+            return False, "Timeout al consultar la API de solved.ac. Intenta de nuevo."
+        except requests.exceptions.RequestException as e:
+            return False, f"Error de red al verificar el problema: {str(e)}"
         except Exception as e:
+            print(f"[ERROR check_problem_solved] Exception: {type(e).__name__}: {str(e)}")
             return False, f"Error al verificar el problema: {str(e)}" 

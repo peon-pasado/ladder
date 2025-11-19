@@ -1,24 +1,131 @@
 {% extends "base.html" %}
 
-{% block title %}Inicio - Mi Aplicación Flask{% endblock %}
+{% block title %}Inicio - Ladder App{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8 text-center">
-        <h1 class="display-4 mt-5">Bienvenido a Mi Aplicación</h1>
-        <p class="lead">
-            Una aplicación web simple con Flask y SQLite
-        </p>
-        <div class="mt-4">
-            {% if current_user.is_authenticated %}
-            <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary btn-lg">Ir al Dashboard</a>
-            {% else %}
-            <div class="d-flex justify-content-center gap-3">
-                <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Iniciar Sesión</a>
-                <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary">Registrarse</a>
+    <div class="col-lg-10">
+        <!-- Hero Section -->
+        <div class="text-center mt-5 mb-5">
+            <div class="mb-4">
+                <i class="bi bi-ladder" style="font-size: 4rem; background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
             </div>
-            {% endif %}
+            <h1 class="display-4 mb-3">Bienvenido a Ladder App</h1>
+            <p class="lead mb-4">
+                <i class="bi bi-rocket-takeoff me-2"></i>
+                Practica problemas de programación de forma progresiva e inteligente
+            </p>
+            <div class="mt-4">
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary btn-lg">
+                    <i class="bi bi-speedometer2 me-2"></i>Ir al Dashboard
+                </a>
+                {% else %}
+                <div class="d-flex justify-content-center gap-3 flex-wrap">
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg">
+                        <i class="bi bi-box-arrow-in-right me-2"></i>Iniciar Sesión
+                    </a>
+                    <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary btn-lg">
+                        <i class="bi bi-person-plus me-2"></i>Registrarse
+                    </a>
+                </div>
+                {% endif %}
+            </div>
         </div>
+
+        <!-- Features Section -->
+        <div class="row g-4 mt-5">
+            <div class="col-md-4">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <i class="bi bi-graph-up-arrow" style="font-size: 3rem; color: var(--primary-color);"></i>
+                        </div>
+                        <h5 class="card-title">Progresión Inteligente</h5>
+                        <p class="card-text text-muted">
+                            Sistema de ladders que se adapta a tu nivel. Los problemas se revelan progresivamente según tu rendimiento.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <i class="bi bi-link-45deg" style="font-size: 3rem; color: var(--success-color);"></i>
+                        </div>
+                        <h5 class="card-title">Integración con Baekjoon</h5>
+                        <p class="card-text text-muted">
+                            Conecta tus cuentas de Baekjoon y sincroniza automáticamente tus problemas resueltos.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <i class="bi bi-trophy" style="font-size: 3rem; color: var(--warning-color);"></i>
+                        </div>
+                        <h5 class="card-title">Sistema de Rating</h5>
+                        <p class="card-text text-muted">
+                            Rastrea tu progreso con un sistema de rating y buchholz que mide tu rendimiento real.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- How it works -->
+        <div class="card mt-5">
+            <div class="card-header">
+                <h3 class="mb-0"><i class="bi bi-question-circle me-2"></i>¿Cómo funciona?</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center mb-3">
+                        <div class="mb-2">
+                            <span class="badge bg-primary" style="font-size: 1.5rem; width: 50px; height: 50px; line-height: 35px; border-radius: 50%;">1</span>
+                        </div>
+                        <h6>Regístrate</h6>
+                        <p class="text-muted small">Crea tu cuenta en Ladder App</p>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <div class="mb-2">
+                            <span class="badge bg-primary" style="font-size: 1.5rem; width: 50px; height: 50px; line-height: 35px; border-radius: 50%;">2</span>
+                        </div>
+                        <h6>Conecta Baekjoon</h6>
+                        <p class="text-muted small">Vincula tu cuenta de Baekjoon</p>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <div class="mb-2">
+                            <span class="badge bg-primary" style="font-size: 1.5rem; width: 50px; height: 50px; line-height: 35px; border-radius: 50%;">3</span>
+                        </div>
+                        <h6>Resuelve Problemas</h6>
+                        <p class="text-muted small">Practica en tu ladder personalizado</p>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <div class="mb-2">
+                            <span class="badge bg-primary" style="font-size: 1.5rem; width: 50px; height: 50px; line-height: 35px; border-radius: 50%;">4</span>
+                        </div>
+                        <h6>Mejora tu Rating</h6>
+                        <p class="text-muted small">Sube de nivel progresivamente</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA -->
+        {% if not current_user.is_authenticated %}
+        <div class="text-center mt-5 mb-5">
+            <h3 class="mb-4">¿Listo para comenzar?</h3>
+            <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">
+                <i class="bi bi-rocket-takeoff me-2"></i>Comienza Ahora
+            </a>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %} 

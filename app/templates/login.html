@@ -1,46 +1,63 @@
 {% extends "base.html" %}
 
-{% block title %}Iniciar Sesión - Mi Aplicación Flask{% endblock %}
+{% block title %}Iniciar Sesión - Ladder App{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6">
+<div class="row justify-content-center mt-5">
+    <div class="col-md-5 col-lg-4">
         <div class="card">
-            <div class="card-header">
-                <h4 class="text-center">Iniciar Sesión</h4>
+            <div class="card-header text-center">
+                <div class="mb-3">
+                    <i class="bi bi-box-arrow-in-right" style="font-size: 3rem; color: var(--primary-color);"></i>
+                </div>
+                <h3 class="mb-0">Iniciar Sesión</h3>
+                <p class="text-muted small mb-0 mt-2">Accede a tu cuenta de Ladder App</p>
             </div>
-            <div class="card-body">
+            <div class="card-body p-4">
                 <form method="POST" action="{{ url_for('auth.login') }}">
                     {{ form.hidden_tag() }}
                     
                     <div class="mb-3">
-                        {{ form.username.label(class="form-label") }}
-                        {{ form.username(class="form-control") }}
+                        <label class="form-label">
+                            <i class="bi bi-person me-1"></i>{{ form.username.label.text }}
+                        </label>
+                        {{ form.username(class="form-control", placeholder="Ingresa tu nombre de usuario") }}
                         {% for error in form.username.errors %}
-                        <span class="text-danger">{{ error }}</span>
+                        <span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
                         {% endfor %}
                     </div>
                     
                     <div class="mb-3">
-                        {{ form.password.label(class="form-label") }}
-                        {{ form.password(class="form-control") }}
+                        <label class="form-label">
+                            <i class="bi bi-lock me-1"></i>{{ form.password.label.text }}
+                        </label>
+                        {{ form.password(class="form-control", placeholder="Ingresa tu contraseña") }}
                         {% for error in form.password.errors %}
-                        <span class="text-danger">{{ error }}</span>
+                        <span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
                         {% endfor %}
                     </div>
                     
-                    <div class="mb-3 form-check">
-                        {{ form.remember_me(class="form-check-input") }}
-                        {{ form.remember_me.label(class="form-check-label") }}
+                    <div class="mb-4 form-check">
+                        {{ form.remember_me(class="form-check-input", id="rememberMe") }}
+                        <label class="form-check-label" for="rememberMe">
+                            <i class="bi bi-bookmark-check me-1"></i>{{ form.remember_me.label.text }}
+                        </label>
                     </div>
                     
                     <div class="d-grid">
-                        {{ form.submit(class="btn btn-primary") }}
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-box-arrow-in-right me-2"></i>Iniciar Sesión
+                        </button>
                     </div>
                 </form>
             </div>
-            <div class="card-footer text-center">
-                <p class="mb-0">¿No tienes una cuenta? <a href="{{ url_for('auth.register') }}">Regístrate</a></p>
+            <div class="card-footer text-center py-3">
+                <p class="mb-0 text-muted">
+                    ¿No tienes una cuenta? 
+                    <a href="{{ url_for('auth.register') }}" class="fw-bold">
+                        <i class="bi bi-person-plus me-1"></i>Regístrate aquí
+                    </a>
+                </p>
             </div>
         </div>
     </div>

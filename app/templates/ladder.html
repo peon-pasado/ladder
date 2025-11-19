@@ -127,12 +127,21 @@
                                         <div class="time-label">Tiempo restante:</div>
                                         <div class="countdown large-countdown text-warning fw-bold"></div>
                                     </div>
-                                    <div class="d-flex justify-content-between">
-                                        <a href="https://www.acmicpc.net/problem/{{ problem.problem_id }}" target="_blank" class="btn btn-sm btn-light">Ver problema</a>
-                                        <form action="{{ url_for('main.verify_problem_solved', account_id=account.id, problem_id=problem.id) }}" method="POST">
-                                            <input type="hidden" name="days_ago" value="30">
-                                            <button type="submit" class="btn btn-sm btn-info">Verificar</button>
-                                        </form>
+                                    <div class="d-grid gap-2">
+                                        <a href="https://www.acmicpc.net/problem/{{ problem.problem_id }}" target="_blank" class="btn btn-sm btn-light">
+                                            <i class="bi bi-box-arrow-up-right me-1"></i>Ver problema
+                                        </a>
+                                        <div class="d-flex gap-2">
+                                            <form action="{{ url_for('main.verify_problem_solved', account_id=account.id, problem_id=problem.id) }}" method="POST" class="flex-fill">
+                                                <input type="hidden" name="days_ago" value="30">
+                                                <button type="submit" class="btn btn-sm btn-success w-100">
+                                                    <i class="bi bi-check-circle me-1"></i>Verificar
+                                                </button>
+                                            </form>
+                                            <button type="button" class="btn btn-sm btn-danger flex-fill" onclick="surrenderProblem(this, {{ problem.id }})">
+                                                <i class="bi bi-flag me-1"></i>Rendirse
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="timestamp-debug d-none small text-muted mt-2">
                                         <small>{{ problem.revealed_at }}</small>
@@ -141,6 +150,7 @@
                                     <!-- Contenido para problemas con tiempo agotado -->
                                     {% elif problem.state == 'unsolved' %}
                                     <div class="text-danger fw-bold fs-4 mb-3">✕ Tiempo agotado</div>
+                                    <p class="text-white">No se pudo resolver a tiempo. Rating penalizado: -50</p>
                                     <div>
                                         <a href="https://www.acmicpc.net/problem/{{ problem.problem_id }}" target="_blank" class="btn btn-sm btn-light">Ver problema</a>
                                     </div>
@@ -218,6 +228,13 @@
     transform: translateY(-5px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
+.ladder-item:hover .large-card {
+    transform: none !important;
+    top: 50% !important;
+    left: 50% !important;
+    margin-left: -225px !important;
+    margin-top: -225px !important;
+}
 .ladder-item .card-body {
     display: flex;
     flex-direction: column;
@@ -251,7 +268,7 @@
     margin-bottom: 0.25rem;
 }
 .bg-unsolved {
-    background-color: #444444 !important;
+    background-color: #dc3545 !important;
     color: white !important;
 }
 .bg-hidden {
@@ -278,26 +295,39 @@
     opacity: 0.9;
 }
 .large-card {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    max-width: 90%;
-    width: 320px;
-    max-height: 400px;
-    aspect-ratio: 1/1.2;
-    z-index: 1000;
-    box-shadow: 0 0 15px rgba(0,0,0,0.3);
-    overflow-y: auto;
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    margin-left: -225px !important;
+    margin-top: -225px !important;
+    width: 450px !important;
+    height: 450px !important;
+    max-width: 90% !important;
+    max-height: 90vh !important;
+    z-index: 10001 !important;
+    box-shadow: 0 0 15px rgba(0,0,0,0.3) !important;
+    overflow-y: auto !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    transition: none !important;
+    will-change: auto !important;
+}
+.large-card:hover {
+    transform: none !important;
 }
 .overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
     background-color: rgba(0,0,0,0.5);
-    z-index: 999;
+    z-index: 10000;
+    pointer-events: auto;
+    overflow: hidden;
+}
+body.modal-open {
+    overflow: hidden;
 }
 .small-card-content {
     min-height: 50px;
@@ -315,6 +345,9 @@ function showProblemDetails(btn) {
     const detailCard = cardBody.querySelector('.detail-card');
     const smallCard = cardBody.querySelector('.small-card');
     const smallCardContent = smallCard.querySelector('.small-card-content');
+    
+    // Clonar el detailCard para moverlo fuera del ladder-item
+    const clonedDetailCard = detailCard.cloneNode(true);
     
     // Check if this is an unrevealed problem (has Open button)
     const isUnrevealed = smallCard.classList.contains('bg-primary') && 
@@ -356,91 +389,72 @@ function showProblemDetails(btn) {
     
     // Function to handle the actual opening of problem details
     function openProblemDetails() {
+        // Bloquear scroll del body
+        document.body.classList.add('modal-open');
+        
         // Crear overlay
         const overlay = document.createElement('div');
         overlay.classList.add('overlay');
+        overlay.setAttribute('data-modal-id', 'problem-modal-overlay');
         document.body.appendChild(overlay);
         
-        // Mostrar tarjeta de detalles
-        if (detailCard) {
-            detailCard.style.display = 'block';
+        // Agregar el card clonado al body (no al ladder-item)
+        clonedDetailCard.style.display = 'block';
+        clonedDetailCard.setAttribute('data-modal-id', 'problem-modal-card');
+        document.body.appendChild(clonedDetailCard);
+        
+        // Copiar data-revealed-at del small-card al detail-card clonado si existe
+        if (smallCard && smallCard.hasAttribute('data-revealed-at')) {
+            const revealedAt = smallCard.getAttribute('data-revealed-at');
+            clonedDetailCard.setAttribute('data-revealed-at', revealedAt);
+        }
+        
+        // Actualizar el botón de cerrar para que funcione con el card clonado
+        const closeBtn = clonedDetailCard.querySelector('.close-details');
+        if (closeBtn) {
+            closeBtn.onclick = function() {
+                hideDetailsCloned();
+            };
+        }
             
-            // Copiar data-revealed-at del small-card al detail-card si existe
-            if (smallCard && smallCard.hasAttribute('data-revealed-at')) {
-                const revealedAt = smallCard.getAttribute('data-revealed-at');
-                detailCard.setAttribute('data-revealed-at', revealedAt);
+        // Si es un problema 'current' y no tiene revealed_at, establecerlo ahora y actualizar en la BD
+        if (isUnrevealed) {
+            
+            // Obtener el ID del problema
+            let problemId = null;
+            // Extraer el ID del formulario correctamente (es el penúltimo segmento de la URL)
+            const form = clonedDetailCard.querySelector('form');
+            if (form && form.action) {
+                const urlParts = form.action.split('/');
+                problemId = urlParts[urlParts.length - 2]; // Penúltimo segmento
             }
-            
-            // Si es un problema 'current' y no tiene revealed_at, establecerlo ahora y actualizar en la BD
-            if (isUnrevealed) {
                 
-                // Obtener el ID del problema
-                let problemId = null;
-                // Extraer el ID del formulario correctamente (es el penúltimo segmento de la URL)
-                const form = detailCard.querySelector('form');
-                if (form && form.action) {
-                    const urlParts = form.action.split('/');
-                    problemId = urlParts[urlParts.length - 2]; // Penúltimo segmento
-                }
-                
-                if (problemId) {
-                    // Realizar una solicitud AJAX para establecer el revealed_at en el servidor
-                    fetch(`/set_revealed_at/${problemId}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            // Actualizar el atributo data-revealed-at en ambas tarjetas
-                            smallCard.setAttribute('data-revealed-at', data.revealed_at);
-                            detailCard.setAttribute('data-revealed-at', data.revealed_at);
-                            
-                            // Actualizar el contenido de la tarjeta pequeña para mostrar ID y countdown
-                            if (smallCardContent) {
-                                // Obtener el ID del problema del detalle
-                                const problemIdElement = detailCard.querySelector('.card-header h5');
-                                let problemIdText = '';
-                                if (problemIdElement) {
-                                    const match = problemIdElement.textContent.match(/#(\d+)/);
-                                    if (match && match[1]) {
-                                        problemIdText = match[1];
-                                    }
-                                }
-                                
-                                // Actualizar el contenido de la small card
-                                smallCardContent.innerHTML = `
-                                    <h5 class="card-title m-0">${problemIdText}</h5>
-                                    <div class="countdown small text-warning fw-bold"></div>
-                                    <button class="btn btn-sm btn-light mt-1 open-btn" onclick="showProblemDetails(this)">Detalles</button>
-                                `;
-                            }
-                            
-                            // Iniciar el contador
-                            updateCountdowns();
-                            
-                            // Mostrar el timestamp en la interfaz si es necesario
-                            const timestampElement = detailCard.querySelector('p small');
-                            if (timestampElement) {
-                                const formattedTime = data.revealed_at.replace('T', ' ').replace(/\.\d+$/, '');
-                                timestampElement.textContent = `Revelado: ${formattedTime}`;
-                            }
-                        }
-                    })
-                    .catch(error => console.error('Error:', error));
-                }
+            if (problemId) {
+                // Realizar una solicitud AJAX para establecer el revealed_at en el servidor
+                fetch(`/set_revealed_at/${problemId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Recargar la página para mostrar el siguiente problema oculto (gris)
+                        window.location.reload();
+                    }
+                })
+                .catch(error => console.error('Error:', error));
             }
-            
-            // Actualizar el tiempo inmediatamente en la tarjeta grande si hay un contador
-            const largeCountdown = detailCard.querySelector('.large-countdown');
-            const smallCountdown = smallCard.querySelector('.countdown');
-            
-            if (largeCountdown && smallCountdown && smallCountdown.textContent) {
-                largeCountdown.textContent = smallCountdown.textContent;
-                largeCountdown.className = smallCountdown.className.replace('small', 'large-countdown');
-            }
+        }
+        
+        // Actualizar el tiempo inmediatamente en la tarjeta grande si hay un contador
+        const largeCountdown = clonedDetailCard.querySelector('.large-countdown');
+        const smallCountdown = smallCard.querySelector('.countdown');
+        
+        if (largeCountdown && smallCountdown && smallCountdown.textContent) {
+            largeCountdown.textContent = smallCountdown.textContent;
+            largeCountdown.className = smallCountdown.className.replace('small', 'large-countdown');
         }
         
         // Iniciar contadores en la tarjeta grande
@@ -448,20 +462,41 @@ function showProblemDetails(btn) {
         
         // Agregar evento para cerrar al hacer clic en el overlay
         overlay.addEventListener('click', function() {
-            hideDetails(cardBody.querySelector('.close-details'));
+            hideDetailsCloned();
         });
     }
 }
 
-// Función para ocultar los detalles
+// Función para ocultar los detalles (método antiguo - mantener por compatibilidad)
 function hideDetails(btn) {
     const detailCard = btn.closest('.detail-card');
     detailCard.style.display = 'none';
+    
+    // Desbloquear scroll del body
+    document.body.classList.remove('modal-open');
     
     // Eliminar overlay
     const overlay = document.querySelector('.overlay');
     if (overlay) {
         overlay.remove();
+    }
+}
+
+// Nueva función para ocultar los detalles clonados
+function hideDetailsCloned() {
+    // Desbloquear scroll del body
+    document.body.classList.remove('modal-open');
+    
+    // Eliminar overlay clonado
+    const overlay = document.querySelector('[data-modal-id="problem-modal-overlay"]');
+    if (overlay) {
+        overlay.remove();
+    }
+    
+    // Eliminar card clonado
+    const clonedCard = document.querySelector('[data-modal-id="problem-modal-card"]');
+    if (clonedCard) {
+        clonedCard.remove();
     }
 }
 
@@ -546,6 +581,38 @@ function updateCountdowns() {
                     countdown.classList.remove('text-warning');
                     countdown.classList.add('text-danger');
                 });
+                
+                // Marcar como expirado en el servidor solo una vez
+                const expiredKey = `problem_${problemId}_expired`;
+                const alreadyMarked = localStorage.getItem(expiredKey);
+                
+                if (!alreadyMarked) {
+                    localStorage.setItem(expiredKey, 'true');
+                    
+                    // Obtener el ID del problema del card
+                    const form = card.closest('.ladder-item')?.querySelector('form');
+                    if (form) {
+                        const urlParts = form.action.split('/');
+                        const ladderProblemId = urlParts[urlParts.length - 2];
+                        
+                        // Llamar al servidor para marcar como tiempo agotado
+                        fetch(`/problem/${ladderProblemId}/mark_time_expired`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                console.log('Tiempo agotado:', data);
+                                // Recargar la página inmediatamente para mostrar los cambios
+                                window.location.reload();
+                            }
+                        })
+                        .catch(error => console.error('Error al marcar tiempo agotado:', error));
+                    }
+                }
             } else {
                 // Still have time remaining
                 const hours = Math.floor(timeRemaining / (60 * 60 * 1000));
@@ -585,6 +652,32 @@ function updateCountdowns() {
 setInterval(updateCountdowns, 1000);
 // Iniciar al cargar la página
 document.addEventListener('DOMContentLoaded', updateCountdowns);
+
+// Función para rendirse en un problema
+function surrenderProblem(btn, problemId) {
+    if (confirm('¿Estás seguro de que quieres rendirte? Se aplicará la penalización de rating como si el tiempo hubiera expirado.')) {
+        // Llamar al endpoint mark_time_expired
+        fetch(`/problem/${problemId}/mark_time_expired`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Te has rendido. Rating: ${data.old_rating} → ${data.new_rating} (${data.rating_change})`);
+                window.location.reload();
+            } else {
+                alert('Error: ' + (data.message || 'No se pudo procesar la rendición'));
+            }
+        })
+        .catch(error => {
+            console.error('Error al rendirse:', error);
+            alert('Error al procesar la rendición');
+        });
+    }
+}
 
 // Limpiar localStorage cuando se reinicia el ladder
 document.addEventListener('DOMContentLoaded', function() {

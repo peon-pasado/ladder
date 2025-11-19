@@ -99,4 +99,73 @@ class SolvedAcAPI:
         problem_data = SolvedAcAPI.get_problem_by_id(problem_id)
         if problem_data and "tags" in problem_data:
             return problem_data["tags"]
-        return [] 
+        return []
+    
+    @staticmethod
+    def search_problems_by_query(query: str, page: int = 1, sort: str = "id", direction: str = "asc") -> Dict[str, Any]:
+        """
+        Search problems using a query string (supports tags, groups, etc.)
+        
+        Args:
+            query: Search query (e.g., "/ptzsum19" for Petrozavodsk Summer 2019)
+            page: Page number for pagination (default: 1)
+            sort: Field to sort by (default: "id")
+            direction: Sort direction (default: "asc")
+            
+        Returns:
+            Dictionary with 'count' and 'items' keys containing problem data
+        """
+        url = f"{SolvedAcAPI.BASE_URL}/search/problem"
+        params = {
+            "query": query,
+            "page": page,
+            "sort": sort,
+            "direction": direction
+        }
+        
+        try:
+            response = requests.get(url, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'count': data.get('count', 0),
+                    'items': data.get('items', [])
+                }
+            return {'count': 0, 'items': []}
+        except Exception as e:
+            print(f"Error searching problems with query '{query}': {str(e)}")
+            return {'count': 0, 'items': []}
+    
+    @staticmethod
+    def get_all_problems_by_query(query: str, max_problems: int = 500) -> List[Dict[str, Any]]:
+        """
+        Get all problems matching a query (handles pagination automatically)
+        
+        Args:
+            query: Search query (e.g., "/ptzsum19" for Petrozavodsk Summer 2019)
+            max_problems: Maximum number of problems to fetch (default: 500)
+            
+        Returns:
+            List of all matching problems
+        """
+        all_problems = []
+        page = 1
+        
+        while len(all_problems) < max_problems:
+            result = SolvedAcAPI.search_problems_by_query(query, page=page)
+            items = result.get('items', [])
+            
+            if not items:
+                break
+            
+            all_problems.extend(items)
+            
+            # Si obtuvimos menos de 50 resultados (tamaño de página por defecto),
+            # probablemente no hay más páginas
+            if len(items) < 50:
+                break
+            
+            page += 1
+            time.sleep(0.5)  # Rate limiting para ser amables con la API
+        
+        return all_problems[:max_problems] 

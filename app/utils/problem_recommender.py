@@ -2,6 +2,7 @@ import sqlite3
 import random
 import math
 from datetime import datetime, timedelta
+from app.utils.constants import Constants
 
 class ProblemRecommender:
     """
@@ -62,7 +63,7 @@ class ProblemRecommender:
         user_data = cursor.fetchone()
         conn.close()
         
-        user_rating = user_data[0] if user_data else 1500
+        user_rating = user_data[0] if user_data else Constants.DEFAULT_USER_RATING
         
         # Calcular el buchholz (diferencia respecto al rating)
         # Si es positivo, el usuario está resolviendo problemas por encima de su nivel
@@ -124,7 +125,7 @@ class ProblemRecommender:
         # Obtener el rating actual del usuario
         cursor.execute("SELECT rating FROM users WHERE id = ?", (user_id,))
         user_data = cursor.fetchone()
-        user_rating = user_data[0] if user_data else 1500
+        user_rating = user_data[0] if user_data else Constants.DEFAULT_USER_RATING
         
         # Calcular el buchholz del usuario
         buchholz = ProblemRecommender.calculate_buchholz(user_id)
@@ -132,14 +133,31 @@ class ProblemRecommender:
         # Ajustar el rating objetivo según el buchholz
         target_rating = user_rating + (buchholz * ProblemRecommender.BUCHHOLZ_WEIGHT)
         
-        # Rango de niveles a buscar
-        min_level = int(target_rating - ProblemRecommender.LEVEL_RANGE_OFFSET)
-        max_level = int(target_rating + ProblemRecommender.LEVEL_RANGE_OFFSET)
+        # Convertir rating a tier usando la función de conversión
+        target_tier = Constants.rating_to_tier(target_rating)
         
-        # Añadir un factor aleatorio al rango para aumentar variedad
-        random_offset = random.randint(-50, 50)
-        min_level += random_offset
-        max_level += random_offset
+        # Calcular el rango de tiers a buscar (±10% del tier objetivo, mínimo ±2)
+        tier_range = max(2, int(Constants.MAX_PROBLEM_TIER * 0.1))
+        min_tier = max(Constants.MIN_PROBLEM_TIER, target_tier - tier_range)
+        max_tier = min(Constants.MAX_PROBLEM_TIER, target_tier + tier_range)
+        
+        print(f"[DEBUG] Revealing next problem: user_rating={user_rating}, target_rating={target_rating}, target_tier={target_tier}, range=[{min_tier}, {max_tier}]")
+        
+        # Obtener el source_group del primer problema del ladder para mantener consistencia
+        cursor.execute(
+            """
+            SELECT p.source_group
+            FROM ladder_problems lp
+            JOIN problems p ON lp.problem_id = p.problem_id
+            WHERE lp.baekjoon_username = ?
+            LIMIT 1
+            """,
+            (baekjoon_username,)
+        )
+        source_group_result = cursor.fetchone()
+        source_group = source_group_result[0] if source_group_result else None
+        
+        print(f"[DEBUG] Using source_group: {source_group}")
         
         # Obtener problemas que ya están en el ladder para excluirlos
         cursor.execute(
@@ -153,18 +171,34 @@ class ProblemRecommender:
         
         existing_problems = [row[0] for row in cursor.fetchall()]
         
-        # Buscar un nuevo problema en la base de datos general
-        cursor.execute(
-            """
-            SELECT problem_id, problem_title, level
-            FROM problems 
-            WHERE level BETWEEN ? AND ?
-            AND problem_id NOT IN ({})
-            ORDER BY RANDOM()
-            LIMIT 10
-            """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
-            [min_level, max_level] + existing_problems if existing_problems else [min_level, max_level]
-        )
+        # Buscar un nuevo problema en la base de datos general usando tier y source_group
+        if source_group:
+            # Con filtro de source_group
+            cursor.execute(
+                """
+                SELECT problem_id, problem_title, tier
+                FROM problems 
+                WHERE tier BETWEEN ? AND ?
+                AND source_group = ?
+                AND problem_id NOT IN ({})
+                ORDER BY RANDOM()
+                LIMIT 10
+                """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
+                [min_tier, max_tier, source_group] + existing_problems if existing_problems else [min_tier, max_tier, source_group]
+            )
+        else:
+            # Sin filtro de source_group
+            cursor.execute(
+                """
+                SELECT problem_id, problem_title, tier
+                FROM problems 
+                WHERE tier BETWEEN ? AND ?
+                AND problem_id NOT IN ({})
+                ORDER BY RANDOM()
+                LIMIT 10
+                """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
+                [min_tier, max_tier] + existing_problems if existing_problems else [min_tier, max_tier]
+            )
         
         candidates = cursor.fetchall()
         
@@ -199,21 +233,38 @@ class ProblemRecommender:
             
             return new_problem_id
         
-        # Si no hay candidatos en el rango ideal, ampliar la búsqueda
-        wider_min_level = int(target_rating - ProblemRecommender.LEVEL_RANGE_OFFSET * 2)
-        wider_max_level = int(target_rating + ProblemRecommender.LEVEL_RANGE_OFFSET * 2)
+        # Si no hay candidatos en el rango ideal, ampliar la búsqueda (±20% del tier objetivo)
+        wider_tier_range = max(4, int(Constants.MAX_PROBLEM_TIER * 0.2))
+        wider_min_tier = max(Constants.MIN_PROBLEM_TIER, target_tier - wider_tier_range)
+        wider_max_tier = min(Constants.MAX_PROBLEM_TIER, target_tier + wider_tier_range)
         
-        cursor.execute(
-            """
-            SELECT problem_id, problem_title, level
-            FROM problems 
-            WHERE level BETWEEN ? AND ?
-            AND problem_id NOT IN ({})
-            ORDER BY RANDOM()
-            LIMIT 5
-            """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
-            [wider_min_level, wider_max_level] + existing_problems if existing_problems else [wider_min_level, wider_max_level]
-        )
+        if source_group:
+            # Con filtro de source_group
+            cursor.execute(
+                """
+                SELECT problem_id, problem_title, tier
+                FROM problems 
+                WHERE tier BETWEEN ? AND ?
+                AND source_group = ?
+                AND problem_id NOT IN ({})
+                ORDER BY RANDOM()
+                LIMIT 5
+                """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
+                [wider_min_tier, wider_max_tier, source_group] + existing_problems if existing_problems else [wider_min_tier, wider_max_tier, source_group]
+            )
+        else:
+            # Sin filtro de source_group
+            cursor.execute(
+                """
+                SELECT problem_id, problem_title, tier
+                FROM problems 
+                WHERE tier BETWEEN ? AND ?
+                AND problem_id NOT IN ({})
+                ORDER BY RANDOM()
+                LIMIT 5
+                """.format(','.join(['?'] * len(existing_problems)) if existing_problems else 'NULL'),
+                [wider_min_tier, wider_max_tier] + existing_problems if existing_problems else [wider_min_tier, wider_max_tier]
+            )
         
         wider_candidates = cursor.fetchall()
         

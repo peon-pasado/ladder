@@ -6,16 +6,27 @@ from wtforms import StringField, TextAreaField, SubmitField, IntegerField
 from wtforms.validators import DataRequired, Email, NumberRange
 from app.models.user import User
 from app.models.ladder_problem import LadderProblem
+from app.db import Database
+from app.utils.solved_ac_api import SolvedAcAPI
 import os
 import psycopg2
 import logging
-from app.config import DATABASE_URL
+from app.config import DATABASE_URL, DB_TYPE
 
 # Configurar logging para depuración
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 admin = Blueprint('admin', __name__)
+
+# Función helper para obtener conexión según el tipo de BD
+def get_db_connection():
+    """Retorna una conexión a la base de datos según el tipo configurado"""
+    if DB_TYPE == 'postgresql':
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        import sqlite3
+        return sqlite3.connect('app.db')
 
 class WhitelistForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
@@ -31,11 +42,16 @@ class SingleProblemForm(FlaskForm):
     problem_id = IntegerField('ID del Problema', validators=[DataRequired(), NumberRange(min=1000)])
     submit = SubmitField('Agregar Problema')
 
+class GroupImportForm(FlaskForm):
+    query = StringField('Query de búsqueda', validators=[DataRequired()])
+    max_problems = IntegerField('Máximo de problemas', validators=[DataRequired(), NumberRange(min=1, max=1000)])
+    submit = SubmitField('Importar Grupo')
+
 @admin.route('/')
 @login_required
 def admin_index():
-    # Verificar si el usuario es admin (asumimos que el admin tiene ID 1)
-    if current_user.id != 1:
+    # Verificar si el usuario es admin
+    if not current_user.is_admin:
         flash('Acceso denegado. Solo administradores pueden acceder a esta sección.', 'danger')
         return redirect(url_for('main.index'))
     
@@ -47,8 +63,8 @@ def admin_index():
 @admin.route('/whitelist/add', methods=['POST'])
 @login_required
 def add_to_whitelist():
-    # Verificar si el usuario es admin (asumimos que el admin tiene ID 1)
-    if current_user.id != 1:
+    # Verificar si el usuario es admin
+    if not current_user.is_admin:
         flash('Acceso denegado. Solo administradores pueden añadir emails a la whitelist.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
@@ -71,7 +87,7 @@ def add_to_whitelist():
 @login_required
 def remove_from_whitelist(email):
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado. Solo administradores pueden eliminar emails de la whitelist.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
@@ -89,7 +105,7 @@ def remove_from_whitelist(email):
 @login_required
 def setup_page():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado. Solo administradores pueden acceder a esta sección.', 'danger')
         return redirect(url_for('main.index'))
     
@@ -132,12 +148,12 @@ def setup_page():
 @login_required
 def setup_baekjoon():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.setup_page'))
     
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Configurar cuenta de Baekjoon para el admin
@@ -162,12 +178,12 @@ def setup_baekjoon():
 @login_required
 def add_example_problems():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.setup_page'))
     
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verificar si existe la cuenta baekjoon para admin
@@ -208,12 +224,12 @@ def add_example_problems():
 @login_required
 def reset_problems():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.setup_page'))
     
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Eliminar todos los problemas del ladder
@@ -240,7 +256,7 @@ def problems_management():
     logger.debug("Accediendo a la ruta /problems")
     
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado. Solo administradores pueden acceder a esta sección.', 'danger')
         return redirect(url_for('main.index'))
     
@@ -250,7 +266,7 @@ def problems_management():
     
     # Obtener los últimos 20 problemas para mostrar en la página
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -296,7 +312,7 @@ def problems_management():
 @login_required
 def debug_problems():
     logger.debug("Accediendo a la ruta alternativa /debug_problems")
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
     
@@ -309,7 +325,7 @@ def debug_problems():
 # Función para inicializar la tabla de problemas
 def initialize_problems_table():
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verificar si la tabla problems existe
@@ -337,7 +353,8 @@ def initialize_problems_table():
                 solved_count INTEGER DEFAULT 0,
                 level INTEGER DEFAULT NULL,
                 accepted_user_count INTEGER DEFAULT 0,
-                average_tries REAL DEFAULT 0.0
+                average_tries REAL DEFAULT 0.0,
+                source_group TEXT DEFAULT NULL
             )
             """)
             
@@ -358,7 +375,7 @@ def initialize_problems_table():
 @login_required
 def init_problems_table():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
@@ -411,25 +428,32 @@ def init_problems_table():
 @login_required
 def gestionar_problemas():
     logger.debug("Accediendo a la ruta simplificada /gestionar_problemas")
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('main.index'))
     
     # Verificar si la tabla problems existe
     table_exists = False
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-        SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = 'problems'
-        )
-        """)
+        if DB_TYPE == 'postgresql':
+            cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'problems'
+            )
+            """)
+            table_exists = cursor.fetchone()[0]
+        else:
+            cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='problems'
+            """)
+            table_exists = bool(cursor.fetchone())
         
-        table_exists = cursor.fetchone()[0]
         cursor.close()
         conn.close()
             
@@ -458,10 +482,10 @@ def gestionar_problemas():
         {% endif %}
         
         <div class="row mb-4">
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <div class="card">
                     <div class="card-header bg-info text-white">
-                        <h5 class="m-0">Agregar Problema Individual</h5>
+                        <h5 class="m-0"><i class="bi bi-plus-circle"></i> Agregar Problema Individual</h5>
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ url_for('admin.add_single_problem') }}">
@@ -478,10 +502,10 @@ def gestionar_problemas():
                 </div>
             </div>
             
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <div class="card">
                     <div class="card-header bg-success text-white">
-                        <h5 class="m-0">Agregar Rango de Problemas</h5>
+                        <h5 class="m-0"><i class="bi bi-list-ol"></i> Agregar Rango de Problemas</h5>
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ url_for('admin.add_problem_range') }}">
@@ -503,6 +527,49 @@ def gestionar_problemas():
                     </div>
                 </div>
             </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-warning text-white">
+                        <h5 class="m-0"><i class="bi bi-collection"></i> Importar por Grupo</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('admin.import_problem_group') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                            <div class="mb-3">
+                                <label for="query" class="form-label">Query de búsqueda</label>
+                                <input type="text" class="form-control" id="query" name="query" required placeholder="Ej: /ptzsum19">
+                                <small class="form-text text-muted">
+                                    Ejemplos: /ptzsum19, /ptzwin20
+                                </small>
+                            </div>
+                            <div class="mb-3">
+                                <label for="max_problems" class="form-label">Máximo de problemas</label>
+                                <input type="number" class="form-control" id="max_problems" name="max_problems" min="1" max="1000" value="100" required>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-warning">Importar Grupo</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="alert alert-info">
+            <h6><i class="bi bi-info-circle"></i> Ejemplos de queries de grupos:</h6>
+            <ul class="mb-0">
+                <li><strong>/ptzsum19</strong> - Petrozavodsk Summer 2019</li>
+                <li><strong>/ptzwin20</strong> - Petrozavodsk Winter 2020</li>
+                <li><strong>/ptzsum21</strong> - Petrozavodsk Summer 2021</li>
+                <li><strong>tier:15..20</strong> - Problemas entre tier 15 y 20</li>
+                <li><strong>*dp</strong> - Problemas con tag de programación dinámica</li>
+            </ul>
+            <p class="mb-0 mt-2">
+                <a href="https://solved.ac/search" target="_blank" class="text-decoration-none">
+                    <i class="bi bi-box-arrow-up-right"></i> Ver más opciones de búsqueda en Solved.ac
+                </a>
+            </p>
         </div>
         
         <div class="d-grid gap-2">
@@ -526,13 +593,13 @@ def gestionar_problemas():
 @login_required
 def add_single_problem():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
     # Verificar si la tabla problems existe
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -572,11 +639,14 @@ def add_single_problem():
         
         if problem_info:
             # Verificar que el problema se guardó correctamente
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = get_db_connection()
             cursor = conn.cursor()
             
             # Verificar si el problema se agregó a la BD
-            cursor.execute("SELECT problem_id FROM problems WHERE problem_id = %s", (str(problem_id),))
+            if DB_TYPE == 'postgresql':
+                cursor.execute("SELECT problem_id FROM problems WHERE problem_id = %s", (str(problem_id),))
+            else:
+                cursor.execute("SELECT problem_id FROM problems WHERE problem_id = ?", (str(problem_id),))
             exists = cursor.fetchone()
             
             if exists:
@@ -584,24 +654,44 @@ def add_single_problem():
                 logger.debug(f"Problema agregado: {problem_id}, {problem_info['title']}")
             else:
                 # Intentar agregarlo manualmente
-                cursor.execute(
-                    """
-                    INSERT INTO problems 
-                    (problem_id, problem_title, tier, tags, solved_count, level, 
-                     accepted_user_count, average_tries) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        problem_id, 
-                        problem_info["title"], 
-                        problem_info.get("tier", 0), 
-                        problem_info.get("tags", ""), 
-                        problem_info.get("solved_count", 0),
-                        problem_info.get("level", 0),
-                        problem_info.get("accepted_user_count", 0),
-                        problem_info.get("average_tries", 0.0)
+                if DB_TYPE == 'postgresql':
+                    cursor.execute(
+                        """
+                        INSERT INTO problems 
+                        (problem_id, problem_title, tier, tags, solved_count, level, 
+                         accepted_user_count, average_tries) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            problem_id, 
+                            problem_info["title"], 
+                            problem_info.get("tier", 0), 
+                            problem_info.get("tags", ""), 
+                            problem_info.get("solved_count", 0),
+                            problem_info.get("level", 0),
+                            problem_info.get("accepted_user_count", 0),
+                            problem_info.get("average_tries", 0.0)
+                        )
                     )
-                )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO problems 
+                        (problem_id, problem_title, tier, tags, solved_count, level, 
+                         accepted_user_count, average_tries) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            problem_id, 
+                            problem_info["title"], 
+                            problem_info.get("tier", 0), 
+                            problem_info.get("tags", ""), 
+                            problem_info.get("solved_count", 0),
+                            problem_info.get("level", 0),
+                            problem_info.get("accepted_user_count", 0),
+                            problem_info.get("average_tries", 0.0)
+                        )
+                    )
                 conn.commit()
                 flash(f'Problema "{problem_info["title"]}" (ID: {problem_id}) agregado manualmente.', 'success')
             
@@ -617,17 +707,165 @@ def add_single_problem():
     
     return redirect(url_for('admin.gestionar_problemas'))
 
-@admin.route('/problems/add-range', methods=['POST'])
+@admin.route('/problems/import-group', methods=['POST'])
 @login_required
-def add_problem_range():
+def import_problem_group():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
     # Verificar si la tabla problems existe
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DB_TYPE == 'postgresql':
+            cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'problems'
+            )
+            """)
+        else:
+            cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='problems'
+            """)
+        
+        table_exists = cursor.fetchone()[0] if DB_TYPE == 'postgresql' else bool(cursor.fetchone())
+        cursor.close()
+        conn.close()
+        
+        if not table_exists:
+            flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
+            return redirect(url_for('admin.init_problems_simple') if DB_TYPE == 'postgresql' else url_for('admin.gestionar_problemas'))
+            
+    except Exception as e:
+        logger.error(f"Error al verificar la tabla problems: {str(e)}")
+        flash(f'Error al verificar la base de datos: {str(e)}', 'danger')
+        return redirect(url_for('admin.gestionar_problemas'))
+    
+    # Log para depuración
+    logger.debug("Procesando formulario de importación por grupo")
+    
+    # Obtener valores del formulario
+    query = request.form.get('query', '').strip()
+    max_problems = request.form.get('max_problems', 100)
+    
+    if not query:
+        flash('La query de búsqueda es requerida.', 'danger')
+        return redirect(url_for('admin.gestionar_problemas'))
+    
+    try:
+        max_problems = int(max_problems)
+        if max_problems < 1 or max_problems > 1000:
+            flash('El máximo de problemas debe estar entre 1 y 1000.', 'danger')
+            return redirect(url_for('admin.gestionar_problemas'))
+    except ValueError:
+        flash('El máximo de problemas debe ser un número válido.', 'danger')
+        return redirect(url_for('admin.gestionar_problemas'))
+    
+    try:
+        # Obtener problemas desde Solved.ac
+        logger.info(f"Buscando problemas con query: {query}, max: {max_problems}")
+        problems = SolvedAcAPI.get_all_problems_by_query(query, max_problems=max_problems)
+        
+        if not problems:
+            flash(f'No se encontraron problemas con la query: {query}', 'warning')
+            return redirect(url_for('admin.gestionar_problemas'))
+        
+        # Insertar problemas en la base de datos
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        added_count = 0
+        skipped_count = 0
+        error_count = 0
+        
+        for problem in problems:
+            try:
+                problem_id = str(problem.get('problemId'))
+                title = problem.get('titleKo', problem.get('title', 'Sin título'))
+                tier = problem.get('level', 0)
+                
+                # Obtener tags como string
+                tags = ','.join([tag.get('key', '') for tag in problem.get('tags', [])])
+                
+                solved_count = problem.get('acceptedUserCount', 0)
+                average_tries = problem.get('averageTries', 0.0)
+                
+                # Insertar problema (guardando source_group)
+                if DB_TYPE == 'postgresql':
+                    cursor.execute(
+                        """
+                        INSERT INTO problems 
+                        (problem_id, problem_title, tier, tags, solved_count, level, 
+                         accepted_user_count, average_tries, source_group) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (problem_id) DO NOTHING
+                        """,
+                        (
+                            problem_id, title, tier, tags, solved_count, tier,
+                            solved_count, average_tries, query
+                        )
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO problems 
+                        (problem_id, problem_title, tier, tags, solved_count, level, 
+                         accepted_user_count, average_tries, source_group) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            problem_id, title, tier, tags, solved_count, tier,
+                            solved_count, average_tries, query
+                        )
+                    )
+                
+                if cursor.rowcount > 0:
+                    added_count += 1
+                else:
+                    skipped_count += 1
+                    
+            except Exception as e:
+                logger.warning(f"Error al insertar problema {problem.get('problemId')}: {str(e)}")
+                error_count += 1
+                conn.rollback()
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        # Mostrar resultado
+        message = f'Importación completada: {added_count} problemas agregados'
+        if skipped_count > 0:
+            message += f', {skipped_count} ya existían'
+        if error_count > 0:
+            message += f', {error_count} errores'
+        
+        flash(message, 'success' if added_count > 0 else 'info')
+        logger.info(f"Importación completada: {added_count} agregados, {skipped_count} omitidos, {error_count} errores")
+    
+    except Exception as e:
+        flash(f'Error al importar grupo de problemas: {str(e)}', 'danger')
+        logger.error(f"Error al importar grupo: {str(e)}")
+    
+    return redirect(url_for('admin.gestionar_problemas'))
+
+@admin.route('/problems/add-range', methods=['POST'])
+@login_required
+def add_problem_range():
+    # Verificar si el usuario es admin
+    if not current_user.is_admin:
+        flash('Acceso denegado.', 'danger')
+        return redirect(url_for('admin.admin_index'))
+    
+    # Verificar si la tabla problems existe
+    try:
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -681,7 +919,7 @@ def add_problem_range():
         added_count = 0
         problems_added = []
         
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         for problem_id in range(start_id, end_id + 1):
@@ -741,7 +979,7 @@ def add_problem_range():
 @login_required
 def list_all_problems():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado. Solo administradores pueden acceder a esta sección.', 'danger')
         return redirect(url_for('main.index'))
     
@@ -751,7 +989,7 @@ def list_all_problems():
     offset = (page - 1) * per_page
     
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Obtener el total de problemas para la paginación
@@ -800,24 +1038,34 @@ def list_all_problems():
 @login_required
 def lista_problemas():
     # Verificar si el usuario es admin
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado. Solo administradores pueden acceder a esta sección.', 'danger')
         return redirect(url_for('main.index'))
     
     # Verificar si la tabla problems existe
+    table_exists = False
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-        SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = 'problems'
-        )
-        """)
+        if DB_TYPE == 'postgresql':
+            cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'problems'
+            )
+            """)
+            table_exists = cursor.fetchone()[0]
+        else:
+            cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='problems'
+            """)
+            table_exists = bool(cursor.fetchone())
         
-        table_exists = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
         
         if not table_exists:
             flash('La tabla "problems" no existe. Por favor, inicialícela primero.', 'warning')
@@ -826,7 +1074,6 @@ def lista_problemas():
     except Exception as e:
         logger.error(f"Error al verificar la tabla problems: {str(e)}")
         flash(f'Error al verificar la base de datos: {str(e)}', 'danger')
-        return redirect(url_for('admin.gestionar_problemas'))
     
     # Log para depuración
     logger.debug("Accediendo a la lista simplificada de problemas")
@@ -837,7 +1084,7 @@ def lista_problemas():
     offset = (page - 1) * per_page
     
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Obtener el total de problemas para la paginación
@@ -845,12 +1092,20 @@ def lista_problemas():
         total = cursor.fetchone()[0]
         
         # Obtener los problemas para la página actual
-        cursor.execute("""
-            SELECT problem_id, problem_title, tier, tags, solved_count, level, accepted_user_count, average_tries
-            FROM problems
-            ORDER BY problem_id::integer
-            LIMIT %s OFFSET %s
-        """, (per_page, offset))
+        if DB_TYPE == 'postgresql':
+            cursor.execute("""
+                SELECT problem_id, problem_title, tier, tags, solved_count, level, accepted_user_count, average_tries
+                FROM problems
+                ORDER BY problem_id::integer
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
+        else:
+            cursor.execute("""
+                SELECT problem_id, problem_title, tier, tags, solved_count, level, accepted_user_count, average_tries
+                FROM problems
+                ORDER BY CAST(problem_id AS INTEGER)
+                LIMIT ? OFFSET ?
+            """, (per_page, offset))
         
         problems = []
         rows = cursor.fetchall()
@@ -1006,7 +1261,7 @@ def lista_problemas():
 @login_required
 def diagnostico_csrf():
     """Ruta de diagnóstico para verificar el funcionamiento de CSRF"""
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
@@ -1051,7 +1306,7 @@ def diagnostico_csrf():
 @login_required
 def procesar_diagnostico():
     """Procesa el formulario de diagnóstico"""
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
@@ -1065,42 +1320,64 @@ def procesar_diagnostico():
 @login_required
 def init_problems_simple():
     """Versión simplificada para inicializar la tabla de problemas"""
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verificar si la tabla problems existe
-        cursor.execute("""
-        SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = 'problems'
-        )
-        """)
-        
-        table_exists = cursor.fetchone()[0]
+        if DB_TYPE == 'postgresql':
+            cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'problems'
+            )
+            """)
+            table_exists = cursor.fetchone()[0]
+        else:
+            cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='problems'
+            """)
+            table_exists = bool(cursor.fetchone())
         
         if not table_exists:
             logger.info("Creando tabla 'problems'...")
             
             # Crear la tabla problems si no existe
-            cursor.execute("""
-            CREATE TABLE problems (
-                id SERIAL PRIMARY KEY,
-                problem_id TEXT UNIQUE NOT NULL,
-                problem_title TEXT NOT NULL,
-                tier INTEGER DEFAULT NULL,
-                tags TEXT DEFAULT NULL,
-                solved_count INTEGER DEFAULT 0,
-                level INTEGER DEFAULT NULL,
-                accepted_user_count INTEGER DEFAULT 0,
-                average_tries REAL DEFAULT 0.0
-            )
-            """)
+            if DB_TYPE == 'postgresql':
+                cursor.execute("""
+                CREATE TABLE problems (
+                    id SERIAL PRIMARY KEY,
+                    problem_id TEXT UNIQUE NOT NULL,
+                    problem_title TEXT NOT NULL,
+                    tier INTEGER DEFAULT NULL,
+                    tags TEXT DEFAULT NULL,
+                    solved_count INTEGER DEFAULT 0,
+                    level INTEGER DEFAULT NULL,
+                    accepted_user_count INTEGER DEFAULT 0,
+                    average_tries REAL DEFAULT 0.0
+                )
+                """)
+            else:
+                cursor.execute("""
+                CREATE TABLE problems (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    problem_id TEXT UNIQUE NOT NULL,
+                    problem_title TEXT NOT NULL,
+                    tier INTEGER DEFAULT NULL,
+                    tags TEXT DEFAULT NULL,
+                    solved_count INTEGER DEFAULT 0,
+                    level INTEGER DEFAULT NULL,
+                    accepted_user_count INTEGER DEFAULT 0,
+                    average_tries REAL DEFAULT 0.0,
+                    source_group TEXT DEFAULT NULL
+                )
+                """)
             
             conn.commit()
             flash('La tabla "problems" ha sido creada correctamente.', 'success')
@@ -1122,24 +1399,30 @@ def init_problems_simple():
 @login_required
 def debug_problems_direct():
     """Diagnóstico directo de la tabla problems"""
-    if current_user.id != 1:
+    if not current_user.is_admin:
         flash('Acceso denegado.', 'danger')
         return redirect(url_for('admin.admin_index'))
     
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verificar si la tabla problems existe
-        cursor.execute("""
-        SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = 'problems'
-        )
-        """)
-        
-        table_exists = cursor.fetchone()[0]
+        if DB_TYPE == 'postgresql':
+            cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'problems'
+            )
+            """)
+            table_exists = cursor.fetchone()[0]
+        else:
+            cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='problems'
+            """)
+            table_exists = bool(cursor.fetchone())
         
         if not table_exists:
             return f"""
@@ -1149,11 +1432,14 @@ def debug_problems_direct():
             """
         
         # Ver estructura de la tabla
-        cursor.execute("""
-        SELECT column_name, data_type 
-        FROM information_schema.columns 
-        WHERE table_name = 'problems'
-        """)
+        if DB_TYPE == 'postgresql':
+            cursor.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'problems'
+            """)
+        else:
+            cursor.execute("PRAGMA table_info(problems)")
         
         structure = cursor.fetchall()
         
@@ -1173,7 +1459,13 @@ def debug_problems_direct():
         conn.close()
         
         # Generar informe HTML simple
-        columns = [col[0] for col in structure]
+        if DB_TYPE == 'postgresql':
+            columns = [col[0] for col in structure]
+            structure_rows = [(col[0], col[1]) for col in structure]
+        else:
+            # Para SQLite, PRAGMA table_info devuelve: cid, name, type, notnull, dflt_value, pk
+            columns = [col[1] for col in structure]
+            structure_rows = [(col[1], col[2]) for col in structure]
         
         html = f"""
         <html>
@@ -1195,7 +1487,7 @@ def debug_problems_direct():
                     <th>Columna</th>
                     <th>Tipo</th>
                 </tr>
-                {"".join(f"<tr><td>{col[0]}</td><td>{col[1]}</td></tr>" for col in structure)}
+                {"".join(f"<tr><td>{col[0]}</td><td>{col[1]}</td></tr>" for col in structure_rows)}
             </table>
             
             <h3>Cantidad de registros: {count}</h3>
