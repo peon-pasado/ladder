@@ -1,194 +1,156 @@
-import os
-import sys
-import psycopg2
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Script para inicializar la base de datos con las credenciales por defecto.
+Solo ejecutar la primera vez o para resetear la base de datos.
+"""
 import sqlite3
-from app.config import DB_TYPE, DATABASE_URL, DATABASE_PATH
+from werkzeug.security import generate_password_hash
 
-def init_db():
-    print(f"=== INICIO DE INIT_DB ===")
-    print(f"Tipo de base de datos: {DB_TYPE}")
-    print(f"URL de conexión: {DATABASE_URL}")
+# Credenciales por defecto
+DEFAULT_USERNAME = "admin"
+DEFAULT_PASSWORD = "admin123"
+DEFAULT_EMAIL = "admin@ladder.local"
+
+def init_database():
+    """Inicializa la base de datos con las tablas y usuario admin por defecto"""
     
-    try:
-        # Validar si podemos conectarnos
-        if DB_TYPE == 'postgresql':
-            print("Intentando conectar a PostgreSQL...")
-            conn = psycopg2.connect(DATABASE_URL)
-            print("Conexión a PostgreSQL establecida")
-            conn.close()
-        else:
-            print("Intentando conectar a SQLite...")
-            conn = sqlite3.connect(DATABASE_PATH)
-            print("Conexión a SQLite establecida")
-            conn.close()
+    print("========================================")
+    print("  INICIALIZANDO BASE DE DATOS")
+    print("========================================")
+    print("")
+    
+    # Conectar a la base de datos
+    conn = sqlite3.connect('app.db')
+    cursor = conn.cursor()
+    
+    # Crear tabla de usuarios
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password_hash VARCHAR(200) NOT NULL,
+        rating INTEGER DEFAULT 1500,
+        is_admin INTEGER DEFAULT 0
+    )
+    ''')
+    
+    # Crear tabla de cuentas de Baekjoon
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS baekjoon_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        baekjoon_username VARCHAR(50) NOT NULL,
+        added_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, baekjoon_username),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    ''')
+    
+    # Crear tabla de problemas del ladder
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS ladder_problems (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        baekjoon_username VARCHAR(50) NOT NULL,
+        position INTEGER NOT NULL,
+        problem_id VARCHAR(20) NOT NULL,
+        problem_title VARCHAR(200) NOT NULL,
+        state VARCHAR(20) DEFAULT 'hidden',
+        revealed_at TIMESTAMP,
+        UNIQUE(baekjoon_username, position)
+    )
+    ''')
+    
+    # Crear tabla de problemas resueltos
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS solved_problems (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        problem_id VARCHAR(20) NOT NULL,
+        problem_title VARCHAR(200) NOT NULL,
+        position INTEGER NOT NULL,
+        solved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, problem_id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    ''')
+    
+    # Crear tabla de problemas
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS problems (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        problem_id VARCHAR(20) UNIQUE NOT NULL,
+        problem_title VARCHAR(200) NOT NULL,
+        tier INTEGER,
+        tags TEXT,
+        level INTEGER,
+        solved_count INTEGER DEFAULT 0,
+        accepted_user_count INTEGER DEFAULT 0,
+        average_tries REAL DEFAULT 0.0,
+        source_group VARCHAR(100)
+    )
+    ''')
+    
+    # Crear tabla de whitelist de emails
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS email_whitelist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        notes TEXT
+    )
+    ''')
+    
+    print("Tablas creadas correctamente")
+    print("")
+    
+    # Verificar si ya existe el usuario admin
+    cursor.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,))
+    existing_admin = cursor.fetchone()
+    
+    if existing_admin:
+        print("ADVERTENCIA: El usuario 'admin' ya existe")
+        print("No se creara un nuevo usuario admin")
+        print("")
+        print("Si quieres resetear la contrasena, usa:")
+        print("  python cambiar_clave_admin.py")
+    else:
+        # Crear usuario admin por defecto
+        password_hash = generate_password_hash(DEFAULT_PASSWORD)
         
-        print("Importando Database...")
-        from app.db import Database
+        cursor.execute('''
+        INSERT INTO users (username, email, password_hash, rating, is_admin)
+        VALUES (?, ?, ?, 1500, 1)
+        ''', (DEFAULT_USERNAME, DEFAULT_EMAIL, password_hash))
         
-        # Verificar si las tablas necesarias existen
-        print("Verificando si existe tabla users...")
-        users_exists = Database.table_exists('users')
-        print(f"¿Existe tabla users? {users_exists}")
-        
-        if not users_exists:
-            print("Creando tabla de usuarios...")
-            # Crear tabla de usuarios
-            if DB_TYPE == 'postgresql':
-                users_query = '''
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    username VARCHAR(50) UNIQUE NOT NULL,
-                    email VARCHAR(100) UNIQUE NOT NULL,
-                    password_hash VARCHAR(200) NOT NULL,
-                    rating INTEGER DEFAULT 1500
-                )
-                '''
-            else:
-                users_query = '''
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    email TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    rating INTEGER DEFAULT 1500
-                )
-                '''
-            
-            print(f"Ejecutando query: {users_query}")
-            result = Database.execute_query(users_query, commit=True)
-            print(f"Resultado: {result}")
-            print("Tabla de usuarios creada correctamente")
-            
-            # Crear tabla para cuentas de Baekjoon
-            print("Creando tabla de cuentas Baekjoon...")
-            if DB_TYPE == 'postgresql':
-                baekjoon_query = '''
-                CREATE TABLE IF NOT EXISTS baekjoon_accounts (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id),
-                    baekjoon_username VARCHAR(50) NOT NULL,
-                    added_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, baekjoon_username)
-                )
-                '''
-            else:
-                baekjoon_query = '''
-                CREATE TABLE IF NOT EXISTS baekjoon_accounts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    baekjoon_username TEXT NOT NULL,
-                    added_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (id),
-                    UNIQUE(user_id, baekjoon_username)
-                )
-                '''
-            
-            print(f"Ejecutando query: {baekjoon_query}")
-            result = Database.execute_query(baekjoon_query, commit=True)
-            print(f"Resultado: {result}")
-            print("Tabla de cuentas Baekjoon creada correctamente")
-            
-            # Crear tabla para problemas del ladder
-            if DB_TYPE == 'postgresql':
-                ladder_query = '''
-                CREATE TABLE IF NOT EXISTS ladder_problems (
-                    id SERIAL PRIMARY KEY,
-                    baekjoon_username VARCHAR(50) NOT NULL,
-                    position INTEGER NOT NULL,
-                    problem_id VARCHAR(20) NOT NULL,
-                    problem_title VARCHAR(200) NOT NULL,
-                    state VARCHAR(20) DEFAULT 'hidden',
-                    UNIQUE(baekjoon_username, position)
-                )
-                '''
-            else:
-                ladder_query = '''
-                CREATE TABLE IF NOT EXISTS ladder_problems (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    baekjoon_username TEXT NOT NULL,
-                    position INTEGER NOT NULL,
-                    problem_id TEXT NOT NULL,
-                    problem_title TEXT NOT NULL,
-                    state TEXT DEFAULT 'hidden',
-                    UNIQUE(baekjoon_username, position)
-                )
-                '''
-            
-            Database.execute_query(ladder_query, commit=True)
-            print("Tabla de problemas del ladder creada correctamente")
-        
-        # Verificar si la tabla de problemas resueltos existe
-        solved_exists = Database.table_exists('solved_problems')
-        
-        if not solved_exists:
-            print("Añadiendo tabla de problemas resueltos...")
-            # Crear tabla para problemas resueltos con posición en leaderboard
-            if DB_TYPE == 'postgresql':
-                solved_query = '''
-                CREATE TABLE IF NOT EXISTS solved_problems (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id),
-                    problem_id VARCHAR(20) NOT NULL,
-                    problem_title VARCHAR(200) NOT NULL,
-                    position INTEGER NOT NULL,
-                    solved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, problem_id)
-                )
-                '''
-            else:
-                solved_query = '''
-                CREATE TABLE IF NOT EXISTS solved_problems (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    problem_id TEXT NOT NULL,
-                    problem_title TEXT NOT NULL,
-                    position INTEGER NOT NULL,
-                    solved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (id),
-                    UNIQUE(user_id, problem_id)
-                )
-                '''
-            
-            Database.execute_query(solved_query, commit=True)
-            print("Tabla de problemas resueltos añadida correctamente")
-        
-        # Verificar si la tabla de whitelist existe
-        whitelist_exists = Database.table_exists('email_whitelist')
-        
-        if not whitelist_exists:
-            print("Creando tabla para la whitelist de correos...")
-            # Crear tabla para la whitelist de correos
-            if DB_TYPE == 'postgresql':
-                whitelist_query = '''
-                CREATE TABLE IF NOT EXISTS email_whitelist (
-                    id SERIAL PRIMARY KEY,
-                    email VARCHAR(100) UNIQUE NOT NULL,
-                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    notes TEXT
-                )
-                '''
-            else:
-                whitelist_query = '''
-                CREATE TABLE IF NOT EXISTS email_whitelist (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT UNIQUE NOT NULL,
-                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    notes TEXT
-                )
-                '''
-            
-            Database.execute_query(whitelist_query, commit=True)
-            print("Tabla de whitelist de correos creada correctamente")
-        
-        print(f"Base de datos {DB_TYPE} inicializada correctamente.")
-        print("=== FIN DE INIT_DB ===")
-        
-    except Exception as e:
-        print(f"ERROR en init_db: {e}")
-        print(f"Tipo de error: {type(e).__name__}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        print("Usuario administrador creado:")
+        print(f"  Usuario:    {DEFAULT_USERNAME}")
+        print(f"  Contrasena: {DEFAULT_PASSWORD}")
+        print(f"  Email:      {DEFAULT_EMAIL}")
+        print("")
+        print("IMPORTANTE: Cambia la contrasena despues de iniciar sesion")
+    
+    conn.commit()
+    conn.close()
+    
+    print("")
+    print("========================================")
+    print("  BASE DE DATOS INICIALIZADA")
+    print("========================================")
+    print("")
 
-if __name__ == '__main__':
-    init_db() 
+if __name__ == "__main__":
+    import os
+    
+    # Verificar si ya existe la base de datos
+    if os.path.exists('app.db'):
+        print("")
+        print("ADVERTENCIA: Ya existe una base de datos (app.db)")
+        respuesta = input("Deseas continuar? Esto puede crear tablas faltantes (s/n): ")
+        if respuesta.lower() != 's':
+            print("Operacion cancelada")
+            exit(0)
+    
+    init_database()
+

@@ -1,10 +1,13 @@
 import sqlite3
-import psycopg2
 import requests
 import re
 from datetime import datetime
 import os
 from app.config import DB_TYPE, DATABASE_URL
+
+# Importar psycopg2 solo si se va a usar PostgreSQL
+if DB_TYPE == 'postgresql':
+    import psycopg2
 
 class BaekjoonAccount:
     def __init__(self, id, user_id, baekjoon_username, added_on):

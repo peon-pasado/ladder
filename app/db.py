@@ -1,8 +1,11 @@
 import sqlite3
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import os
 from app.config import DATABASE_URL, DB_TYPE, DATABASE_PATH
+
+# Importar psycopg2 solo si se va a usar PostgreSQL
+if DB_TYPE == 'postgresql':
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
 
 # Inicializar tablas inmediatamente
 if DB_TYPE == 'postgresql':

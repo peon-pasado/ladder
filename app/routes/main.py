@@ -10,8 +10,11 @@ from wtforms.validators import DataRequired
 from datetime import datetime, timedelta
 import sqlite3
 from app.utils.problem_recommender import ProblemRecommender
-import psycopg2
 from app.config import DB_TYPE, DATABASE_URL
+
+# Importar psycopg2 solo si se va a usar PostgreSQL
+if DB_TYPE == 'postgresql':
+    import psycopg2
 
 # Función helper para obtener conexión según el tipo de BD
 def get_db_connection():

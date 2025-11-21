@@ -9,9 +9,12 @@ from app.models.ladder_problem import LadderProblem
 from app.db import Database
 from app.utils.solved_ac_api import SolvedAcAPI
 import os
-import psycopg2
 import logging
 from app.config import DATABASE_URL, DB_TYPE
+
+# Importar psycopg2 solo si se va a usar PostgreSQL
+if DB_TYPE == 'postgresql':
+    import psycopg2
 
 # Configurar logging para depuración
 logging.basicConfig(level=logging.DEBUG)

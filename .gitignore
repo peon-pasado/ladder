@@ -1,31 +1,64 @@
-# Entornos virtuales
-venv/
-env/
-ENV/
-
-# Base de datos SQLite (opcional, según tus necesidades)
-# app.db
-
-# Archivos de caché de Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
 
-# Archivos del sistema
+# Entorno virtual
+venv/
+venv_macos/
+ENV/
+env/
+.venv
+
+# Base de datos
+*.db
+*.sqlite
+*.sqlite3
+app.db
+
+# ngrok
+ngrok.exe
+ngrok
+ngrok.zip
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
-.env
-.env.local
+
+# Flask
+instance/
+.webassets-cache
 
 # Logs
 *.log
+logs/
 
-# Archivos de distribución
-dist/
-build/
-*.egg-info/
+# Configuracion local
+.env
+.env.local
+*.local
 
-# IDE y editores
-.idea/
-.vscode/
-*.swp
-*.swo 
+# Sistema operativo
+Thumbs.db
+Desktop.ini
+
+# Archivos temporales
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Certificados y keys
+*.pem
+*.key
+*.crt
+
+# Archivos de configuracion sensible
+config.local.py
+secrets.py

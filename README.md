@@ -1,124 +1,220 @@
-# Ladder App
+# 🪜 Ladder App
 
-Aplicación para practicar problemas de programación de forma progresiva.
+Aplicación web para gestión de problemas de programación competitiva con sistema de escalera (ladder).
 
-## Funcionalidades
+## 📋 Requisitos Previos
 
-- Sistema de ladders (escaleras) para resolver problemas de programación progresivamente
-- Seguimiento de problemas resueltos
-- Sincronización con cuentas de Baekjoon
-- Integración con la API de Solved.ac para obtener información detallada de los problemas
+- Python 3.11 o superior
+- pip (gestor de paquetes de Python)
+- Git
 
-## Estructura del proyecto
+## 🚀 Instalación
 
-- `app.py`: Punto de entrada de la aplicación Flask
-- `wsgi.py`: Punto de entrada para servidores WSGI (Gunicorn)
-- `init_db.py`: Script para inicializar la base de datos
-- `app/`: Paquete principal de la aplicación
-  - `__init__.py`: Configuración de la aplicación Flask
-  - `config.py`: Configuración de la aplicación
-  - `db.py`: Gestión de conexiones a base de datos
-  - `models/`: Modelos de datos (User, BaekjoonAccount, LadderProblem, SolvedProblem)
-  - `routes/`: Rutas y controladores (auth, main, admin)
-  - `templates/`: Plantillas HTML
-  - `static/`: Archivos estáticos (CSS, JS, etc.)
-  - `utils/`: Utilidades y herramientas
-    - `solved_ac_api.py`: Cliente para la API de Solved.ac
-    - `problem_recommender.py`: Sistema de recomendación de problemas
-    - `problem_validator.py`: Validador de problemas
-    - `rating_calculator.py`: Calculador de rating
-- `requirements.txt`: Dependencias del proyecto
-- `Procfile`: Configuración para despliegue en Render
-- `render.yaml`: Configuración de infraestructura en Render
+### 1. Clonar el repositorio
 
-## Integración con Solved.ac API
+```bash
+git clone <url-del-repositorio>
+cd ladder
+```
 
-La aplicación utiliza la API de Solved.ac para obtener información detallada sobre los problemas de programación. La información obtenida incluye:
+### 2. Crear entorno virtual
 
-- Título del problema en varios idiomas
-- Nivel de dificultad (tier)
-- Etiquetas (tags) que categorizan el problema
-- Cantidad de usuarios que han resuelto el problema
-- Número promedio de intentos
+**Windows (PowerShell):**
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+```
 
-## Uso
+**Windows (Command Prompt):**
+```cmd
+python -m venv venv
+venv\Scripts\activate.bat
+```
 
-1. Configura un entorno virtual e instala las dependencias:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # En Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+**Linux/Mac:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
 
-2. Inicializa la base de datos:
-   ```bash
-   python init_db.py
-   ```
+### 3. Instalar dependencias
 
-3. Inicia la aplicación:
-   ```bash
-   python app.py
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-## Requisitos
+Si `pip install` falla con `psycopg2`, ejecuta:
+```bash
+pip install blinker certifi charset-normalizer click dnspython email-validator Flask Flask-Login Flask-WTF idna itsdangerous Jinja2 MarkupSafe requests urllib3 Werkzeug WTForms
+```
 
-- Python 3.7+
-- SQLite o PostgreSQL
-- Flask y dependencias (ver requirements.txt)
+### 4. Inicializar la base de datos (primera vez)
 
-## Despliegue en Render
+```bash
+python init_db.py
+```
 
-Para desplegar esta aplicación en Render:
+Esto creará la base de datos `app.db` con el usuario admin por defecto.
 
-1. Asegúrate de tener una cuenta en [Render](https://render.com/)
-2. Conecta tu repositorio de GitHub a Render
-3. Usa el archivo `render.yaml` incluido que configura automáticamente:
-   - Un Web Service con Python
-   - Una base de datos PostgreSQL
-   - Variables de entorno necesarias
-4. Render detectará automáticamente la configuración y desplegará la aplicación
+## 🎮 Uso
 
-La aplicación estará disponible en la URL proporcionada por Render una vez que se complete el despliegue.
+### Ejecución Local
 
-## Características
+**Opción 1 - Scripts automatizados (Windows):**
+```cmd
+start_server.cmd
+```
 
-- Sistema de autenticación (registro e inicio de sesión)
-- Whitelist de correos electrónicos para registro
-- Sistema de ladders personalizados por usuario
-- Integración con cuentas de Baekjoon
-- Sincronización automática de problemas resueltos
-- Sistema de recomendación de problemas basado en dificultad
-- Seguimiento de progreso y rating
-- Panel de administración
-- Base de datos SQLite (desarrollo) o PostgreSQL (producción)
-- Diseño responsivo con Bootstrap
+**Opción 2 - Comando manual:**
+```bash
+python run_server.py
+```
 
-## Instalación
+La aplicación estará disponible en: `http://localhost:5000`
 
-1. Clonar este repositorio
-2. Crear un entorno virtual:
-   ```bash
-   python -m venv venv
-   ```
-3. Activar el entorno virtual:
-   - En Windows: `venv\Scripts\activate`
-   - En macOS/Linux: `source venv/bin/activate`
-4. Instalar las dependencias:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Acceso desde Internet (con ngrok)
 
-## Configuración inicial
+1. Descarga ngrok desde: https://ngrok.com/download
+2. Autentícate: `ngrok config add-authtoken TU_TOKEN`
+3. Ejecuta:
 
-1. Inicializar la base de datos:
-   ```bash
-   python init_db.py
-   ```
+**Windows:**
+```cmd
+start_ngrok.cmd
+```
 
-## Ejecución
+**Manual:**
+```bash
+ngrok http 5000
+```
 
-1. Ejecutar la aplicación:
-   ```bash
-   python app.py
-   ```
-2. Abrir en el navegador: [http://localhost:5000](http://localhost:5000) 
+4. Copia la URL pública que aparece en "Forwarding"
+
+## 🔑 Credenciales por Defecto
+
+```
+Usuario:    admin
+Contraseña: admin123
+```
+
+**Nota:** La contraseña por defecto debe cambiarse después de la primera instalación por seguridad.
+
+## 📁 Estructura del Proyecto
+
+```
+ladder/
+├── app/                    # Aplicación Flask
+│   ├── models/            # Modelos de datos
+│   ├── routes/            # Rutas y endpoints
+│   ├── templates/         # Plantillas HTML
+│   ├── static/            # Archivos estáticos (CSS)
+│   └── utils/             # Utilidades
+├── venv/                  # Entorno virtual (no en git)
+├── app.db                 # Base de datos SQLite (no en git)
+├── start_server.cmd       # Script de inicio (Windows)
+├── start_ngrok.cmd        # Script ngrok (Windows)
+├── run_server.py          # Script principal del servidor
+└── requirements.txt       # Dependencias
+```
+
+## 🛠️ Tecnologías
+
+- **Backend:** Flask (Python)
+- **Base de datos:** SQLite
+- **Autenticación:** Flask-Login
+- **Formularios:** Flask-WTF
+- **Frontend:** HTML, CSS, Jinja2
+- **API Externa:** solved.ac (para problemas de Baekjoon)
+
+## 🌐 Deploy
+
+### Variables de Entorno (Producción)
+
+```bash
+DATABASE_URL=postgresql://...  # URL de PostgreSQL
+SECRET_KEY=tu-clave-secreta
+RENDER=true                    # Para Render.com
+```
+
+### Render.com
+
+El proyecto incluye `render.yaml` para deploy automático en Render.
+
+## 📝 Desarrollo
+
+### Instalar nuevas dependencias
+
+```bash
+pip install nombre-paquete
+pip freeze > requirements.txt
+```
+
+### Base de datos
+
+La base de datos SQLite se crea automáticamente en `app.db` al iniciar la aplicación.
+
+## 🔐 Cambiar Contraseña del Admin
+
+Para cambiar la contraseña del administrador:
+
+```bash
+python cambiar_clave_admin.py
+```
+
+O proporciona la nueva contraseña directamente:
+
+```bash
+python cambiar_clave_admin.py mi_nueva_password
+```
+
+## 🐛 Solución de Problemas
+
+### Puerto 5000 ocupado
+```bash
+# Windows
+netstat -ano | findstr :5000
+taskkill /PID <PID> /F
+
+# Linux/Mac
+lsof -i :5000
+kill -9 <PID>
+```
+
+### Error de módulos no encontrados
+```bash
+# Verifica que el entorno virtual esté activado
+# Reinstala las dependencias
+pip install -r requirements.txt
+```
+
+### Error de base de datos
+```bash
+# Elimina y reinicia la base de datos
+rm app.db
+python run_server.py
+```
+
+## 🤝 Contribuir
+
+1. Fork el proyecto
+2. Crea una rama (`git checkout -b feature/nueva-funcionalidad`)
+3. Commit tus cambios (`git commit -am 'Agrega nueva funcionalidad'`)
+4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
+5. Abre un Pull Request
+
+## 📄 Licencia
+
+Este proyecto es de código abierto.
+
+## 👥 Autores
+
+- Desarrollo inicial y mantenimiento
+
+## 📞 Contacto
+
+Para reportar problemas o sugerencias, abre un issue en el repositorio.
+
+---
+
+**Nota:** Este proyecto está en desarrollo activo. Algunas funcionalidades pueden cambiar.
+

@@ -5,8 +5,11 @@ from app.utils.solved_ac_api import SolvedAcAPI
 from app.utils.rating_calculator import RatingCalculator
 from app.models.user import User
 from app.utils.problem_recommender import ProblemRecommender
-import psycopg2
 from app.config import DB_TYPE, DATABASE_URL
+
+# Importar psycopg2 solo si se va a usar PostgreSQL
+if DB_TYPE == 'postgresql':
+    import psycopg2
 
 # Función helper para obtener conexión según el tipo de BD
 def get_db_connection():
